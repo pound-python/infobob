@@ -42,6 +42,12 @@ class Infobat(irc.IRCClient):
     wordcount = chaincount = 0
     identified = False
     db = None
+    
+    sourceURL = 'http://svn.habnabit.org/trunk/hab/infobat/infobatdb.py'
+    versionName = 'infobat'
+    versionNum = 'r882'
+    versionEnv = 'twisted'
+    
     def signedOn(self):
         nickserv_pw = conf.get('irc', 'nickserv_pw')
         if nickserv_pw:
