@@ -43,9 +43,9 @@ class Infobat(irc.IRCClient):
     identified = False
     db = None
     
-    sourceURL = 'http://svn.habnabit.org/trunk/hab/infobat/infobatdb.py'
+    sourceURL = '$HeadURL$'
     versionName = 'infobat'
-    versionNum = 'r882'
+    versionNum = '$Revision$'
     versionEnv = 'twisted'
     
     def signedOn(self):
