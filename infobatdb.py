@@ -36,6 +36,9 @@ def gen_shuffle(iter_obj):
         n = sample.pop(random.randrange(len(sample)))
         yield iter_obj[n]
 
+svnURL = '$HeadURL$'.split()[1]
+svnRevision = 'r' + '$Revision$'.split()[1]
+
 class Infobat(irc.IRCClient):
     nickname = conf.get('irc', 'nickname')
     max_countdown = conf.getint('database', 'sync_time')
@@ -43,9 +46,9 @@ class Infobat(irc.IRCClient):
     identified = False
     db = None
     
-    sourceURL = '$HeadURL$'
+    sourceURL = svnURL
     versionName = 'infobat'
-    versionNum = '$Revision$'
+    versionNum = svnRevision
     versionEnv = 'twisted'
     
     def signedOn(self):
