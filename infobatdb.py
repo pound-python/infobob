@@ -16,19 +16,24 @@ conf = ConfigParser.ConfigParser(dict(port='6667', channels='#infobat'))
 conf.read(['infobat.cfg'])
 
 _redent_pattern = re.compile('([^:;]*)([:;]|$)')
+_valid_first_words = set(
+    'if elif else for while try except finally class def with'.split())
 def redent(s):
-    ret, indent = [], 0
+    ret, indent = [['']], 0
     for tok in _redent_pattern.finditer(s):
         line, end = [st.strip() for st in tok.groups()]
         if line:
             if end == ':':
-                line += ':'
-            ret.append('    ' * indent + line)
-            if end == ':':
+                line += ': '
+            first_word = line.partition(' ')[0]
+            ret[-1].append(line)
+            if end == ':' and first_word in _valid_first_words:
                 indent += 1
+            if end != ':' or first_word in _valid_first_words:
+                ret.append(['    ' * indent])
         else:
             indent -= 1
-    return '\n'.join(ret)
+    return '\n'.join(''.join(line) for line in ret)
 
 def gen_shuffle(iter_obj):
     sample = range(len(iter_obj))
@@ -123,7 +128,7 @@ class Infobat(irc.IRCClient):
         if not user: return
         user = user.split('!', 1)[0]
         if (user.lower() == 'nickserv' and not self.identified and 
-                'accepted' in message):
+                'identified' in message):
             self.identified = True
             self.join(conf.get('irc', 'channels'))
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
@@ -192,7 +197,7 @@ class Infobat(irc.IRCClient):
                     result = user + ', ' + result
                 self.msg(target, result)
     
-    def infobat_redent(self, target, *text):
+    def infobat_redent(self, target, paste_target, *text):
         redented = redent(' '.join(text))
         params = dict(
             lang='Python', submit='Paste',
@@ -205,7 +210,7 @@ class Infobat(irc.IRCClient):
         if not link:
             self.msg(target, 'An error occurred.')
         else:
-            self.msg(target, link.groups()[0])
+            self.msg(target, '%s, %s' % (paste_target, link.groups()[0]))
     def infobat_sync(self, target):
         if self.db is None: return
         self._sync()
