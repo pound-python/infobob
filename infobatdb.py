@@ -2,6 +2,7 @@
 from __future__ import with_statement
 import re, gdbm, random, collections, threading, urllib
 from datetime import datetime
+from twisted.web import xmlrpc
 from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, task
 from twisted.protocols import policies
@@ -200,18 +201,18 @@ class Infobat(irc.IRCClient):
     
     def infobat_redent(self, target, paste_target, *text):
         redented = redent(' '.join(text))
-        params = dict(
-            lang='Python', submit='Paste',
-            text=redented,
-            nick=self.nickname
-        )
-        data = urllib.urlopen(
-            'http://rafb.net/paste/paste.php', urllib.urlencode(params)).read()
-        link = _paste_regex.search(data)
-        if not link:
-            self.msg(target, 'An error occurred.')
-        else:
-            self.msg(target, '%s, %s' % (paste_target, link.groups()[0]))
+        proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
+        d = proxy.callRemote('pastes.newPaste', 'python', redented)
+        d.addCallbacks(self._redent_success, self._redent_failure,
+            callbackArgs=(target, paste_target), errbackArgs=(target,))
+    
+    def _redent_success(self, id, target, paste_target):
+        self.msg(target, '%s, http://paste.pocoo.org/show/%s/' % (
+            paste_target, id))
+    def _redent_failure(self, failure, target):
+        self.msg(target, 'Error: %s' % failure.getErrorMessage())
+        return failure
+    
     def infobat_sync(self, target):
         if self.db is None: return
         self._sync()
