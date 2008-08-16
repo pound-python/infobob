@@ -22,10 +22,10 @@ def redent(s):
     ret, indent = [['']], 0
     for tok in _redent_pattern.finditer(s):
         line, end = [st.strip() for st in tok.groups()]
+        first_word = line.partition(' ')[0]
         if line:
             if end == ':':
                 line += ': '
-            first_word = line.partition(' ')[0]
             ret[-1].append(line)
             if end == ':' and first_word in _valid_first_words:
                 indent += 1
@@ -33,6 +33,7 @@ def redent(s):
                 ret.append(['    ' * indent])
         else:
             indent -= 1
+            ret[-1][0] = '    ' * indent
     return '\n'.join(''.join(line) for line in ret)
 
 def gen_shuffle(iter_obj):
