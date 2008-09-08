@@ -58,16 +58,21 @@ class Infobat(irc.IRCClient):
     versionNum = svnRevision
     versionEnv = 'twisted'
     
+    def _load_database(self):
+        self.db = gdbm.open(conf.get('database', 'db_file'), 'cf')
+        if self.db.firstkey() is None:
+            self.db['__offset__'] = '0;0'
+            self.db['__start__'] = ''
+            self.db['__act__'] = ''
+            self.db.sync()
+        self.start_offset, self.actions = [
+            int(x) for x in self.db['__offset__'].split(';')]
+    
     def signedOn(self):
         nickserv_pw = conf.get('irc', 'nickserv_pw')
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
-        self.db = gdbm.open(conf.get('database', 'db_file'), 'cf')
-        try:
-            offsets = [int(x) for x in self.db['__offset__'].split(';')]
-        except KeyError:
-            offsets = 0, 0
-        self.start_offset, self.actions = offsets
+        self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
         self._updates = collections.defaultdict(str)
@@ -228,7 +233,7 @@ class Infobat(irc.IRCClient):
             self.msg(target, 'Database was unlocked.')
     def infobat_lock(self, target):
         if self.db is None:
-            self.db = gdbm.open(conf.get('database', 'db_file'), 'cf')
+            self._load_database()
             self.looper.start(30)
             self.msg(target, 'Database locked.')
         else:
