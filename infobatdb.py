@@ -19,7 +19,7 @@ conf.read(['infobat.cfg'])
 _chain_struct = struct.Struct('>128H')
 class Chain(object):
     def __init__(self, data=None):
-        if self.data is None:
+        if data is None:
             self.data = [0] * 128
         else:
             self.data = list(_chain_struct.unpack(data))
@@ -93,7 +93,7 @@ class Infobat(irc.IRCClient):
     versionEnv = 'twisted'
     
     def _load_database(self):
-        self.db = bsddb3.hashopen(conf.get('database', 'db_file'), 'cf')
+        self.db = bsddb3.hashopen(conf.get('database', 'db_file'), 'c')
         if '__offset__' not in self.db:
             self.db['__offset__'] = '0;0'
             self.db['__start__'] = ''
@@ -121,7 +121,7 @@ class Infobat(irc.IRCClient):
             self._sync()
             self.countdown = self.max_countdown
     def _sync(self):
-        for chain, chainobj in self._updates:
+        for chain, chainobj in self._updates.iteritems():
             dbchain = self.db.get(chain)
             if dbchain:
                 chainobj.merge(dbchain)
@@ -210,33 +210,30 @@ class Infobat(irc.IRCClient):
                 start_choice = (start_choice - self.start_offset) * ORDER
                 result = self.db['__act__'][start_choice:start_choice + ORDER]
                 action = True
-            try:
-                result += random.choice(self.db[result])
-            except KeyError:
-                pass
-            else:
-                self.chaincount += 1
-                search = result[-ORDER:]
+            if result in self.db:
+                search, result = result, list(result)
                 while 1:
-                    try:
-                        chain = self.db[search]
-                    except KeyError:
+                    chain = self.db.get(search)
+                    self.chaincount += 1
+                    if chain is None:
                         break
-                    if random.randrange(ORDER) == 0:
+                    else:
+                        chain = Chain(chain)
+                    if 0 and random.randrange(ORDER) == 0:
                         chain_ = filter(lambda x: x not in '.!? ', chain)
                         if chain_:
                             chain = chain_
                     for next in gen_shuffle(choices):
-                        if next in chain:
+                        if chain[next]:
                             choices.remove(next)
                             break
                     else:
-                        next = random.choice(chain)
+                        next = chain.choice()
                     if len(result) + len(next) > 255:
                         break
-                    result += next
-                    search = (search + next)[-ORDER:]
-                    self.chaincount += 1
+                    result.append(next)
+                    search = ''.join(result[-ORDER:])
+                result = ''.join(result)
             if action:
                 self.me(target, result)
             else:
