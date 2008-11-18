@@ -1,6 +1,6 @@
 #!/usr/bin/twistd -y
 from __future__ import with_statement
-import re, gdbm, random, collections, threading, urllib
+import re, bsddb3, random, collections, threading, urllib, struct
 from datetime import datetime
 from twisted.web import xmlrpc
 from twisted.words.protocols import irc
@@ -16,6 +16,40 @@ import ConfigParser
 conf = ConfigParser.ConfigParser(dict(port='6667', channels='#infobat'))
 conf.read(['infobat.cfg'])
 
+_chain_struct = struct.Struct('>128H')
+class Chain(object):
+    def __init__(self, data=None):
+        if self.data is None:
+            self.data = [0] * 128
+        else:
+            self.data = list(_chain_struct.unpack(data))
+    
+    def __setitem__(self, key, value):
+        self.data[ord(key)] = value
+    def __getitem__(self, key):
+        return self.data[ord(key)]
+    def __delitem__(self, key):
+        self.data[ord(key)] = 0
+    
+    def pack(self):
+        return _chain_struct.pack(*self.data)
+    
+    def choice(self):
+        which = random.randrange(sum(self.data))
+        partial_sum = 0
+        for index, val in enumerate(self.data):
+            if val + partial_sum > which:
+                return chr(index)
+            partial_sum += val
+    
+    def append(self, key):
+        self.data[ord(key)] += 1
+    
+    def merge(self, data=None, chainobj=None):
+        if chainobj is None:
+            chainobj = Chain(data)
+        self.data = [v1 + v2 for v1, v2 in zip(self.data, chainobj.data)]
+
 _redent_pattern = re.compile('([^:;]*)([:;]|$)')
 _valid_first_words = set(
     'if elif else for while try except finally class def with'.split())
@@ -26,7 +60,7 @@ def redent(s):
         first_word = line.partition(' ')[0]
         if line:
             if end == ':':
-                line += ': '
+                line += ':'
             ret[-1].append(line)
             if end == ':' and first_word in _valid_first_words:
                 indent += 1
@@ -59,8 +93,8 @@ class Infobat(irc.IRCClient):
     versionEnv = 'twisted'
     
     def _load_database(self):
-        self.db = gdbm.open(conf.get('database', 'db_file'), 'cf')
-        if self.db.firstkey() is None:
+        self.db = bsddb3.hashopen(conf.get('database', 'db_file'), 'cf')
+        if '__offset__' not in self.db:
             self.db['__offset__'] = '0;0'
             self.db['__start__'] = ''
             self.db['__act__'] = ''
@@ -75,7 +109,9 @@ class Infobat(irc.IRCClient):
         self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
-        self._updates = collections.defaultdict(str)
+        self._updates = collections.defaultdict(Chain)
+        self._start_update = []
+        self._act_update = []
         self.updates_lock = threading.Lock()
         self.looper.start(30)
     def _sync_countdown(self):
@@ -85,44 +121,48 @@ class Infobat(irc.IRCClient):
             self._sync()
             self.countdown = self.max_countdown
     def _sync(self):
-        with self.updates_lock:
-            for chain in self._updates:
-                if not self.db.has_key(chain):
-                    _chain = ''
-                else:
-                    _chain = self.db[chain]
-                _chain += self._updates[chain]
-                self.db[chain] = _chain
-                if chain == '__start__':
-                    self.start_offset = len(_chain) / ORDER
-                elif chain == '__act__':
-                    self.actions = len(_chain) / ORDER
-            self._updates.clear()
+        for chain, chainobj in self._updates:
+            dbchain = self.db.get(chain)
+            if dbchain:
+                chainobj.merge(dbchain)
+            packed = chainobj.pack()
+            self.db[chain] = packed
+        self._updates.clear()
+        if self._start_update:
+            self.start_offset += len(self._start_update)
+            self.db['__start__'] += ''.join(self._start_update)
+            self._start_update = []
+        if self._act_update:
+            self.actions += len(self._act_update)
+            self.db['__act__'] += ''.join(self._act_update)
+            self._act_update = []
         self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
         self.db.sync()
     def append_chain(self, chain, val):
-        with self.updates_lock:
-            self._updates[chain] += val
+        self._updates[chain].append(val)
         self.countdown = self.max_countdown
-    def learn(self, string):
+    def learn(self, string, action=False):
         if self.db is None: return
+        if string.startswith('*'):
+            action = True
+            string = string.lstrip('*')
         queue, length = '', 0
         for w in _words_regex.finditer(string):
             self.wordcount += 1
             w = w.group().lower()
             if not queue and w == ' ': continue
-            if len(queue) == ORDER and not queue.startswith('*'):
+            if len(queue) == ORDER:
                 self.append_chain(queue, w)
             if w[-1] in '.!?':
-                queue, length = '', 0
+                queue, length, action = '', 0, False
             else:
                 queue += w
                 length += 1
                 if length == ORDER:
-                    if queue.startswith('*'):
-                        self.append_chain('__act__', queue.lstrip('*'))
+                    if action:
+                        self._act_update.append(queue)
                     else:
-                        self.append_chain('__start__', queue)
+                        self._start_update.append(queue)
                 queue = queue[-ORDER:]
     
     def kickedFrom(self, channel, kicker, message):
@@ -130,7 +170,7 @@ class Infobat(irc.IRCClient):
     def action(self, user, channel, message):
         if not user: return
         if channel != self.nickname:
-            self.learn('*' + message)
+            self.learn(message, True)
     def privmsg(self, user, channel, message):
         if not user: return
         user = user.split('!', 1)[0]
