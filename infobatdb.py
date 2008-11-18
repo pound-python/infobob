@@ -8,6 +8,7 @@ from twisted.internet import reactor, protocol, task
 from twisted.protocols import policies
 from twisted.application import internet, service
 ORDER = 4
+punctuation = set(' .!?')
 _words_regex = re.compile(r"(^\*)?[a-zA-Z',.!?\-:; ]")
 _paste_regex = re.compile(r"URL: (http://[a-zA-Z0-9/_.-]+)")
 start = datetime.now()
@@ -200,7 +201,6 @@ class Infobat(irc.IRCClient):
         if command_func is not None:
             command_func(target, *s_command[1:])
         elif self.db is not None and self.start_offset + self.actions > 0:
-            choices = _words_regex.findall(command)
             start_choice = random.randrange(self.start_offset + self.actions)
             action = False
             if start_choice < self.start_offset:
@@ -219,16 +219,11 @@ class Infobat(irc.IRCClient):
                         break
                     else:
                         chain = Chain(chain)
-                    if 0 and random.randrange(ORDER) == 0:
-                        chain_ = filter(lambda x: x not in '.!? ', chain)
-                        if chain_:
-                            chain = chain_
-                    for next in gen_shuffle(choices):
-                        if chain[next]:
-                            choices.remove(next)
-                            break
-                    else:
+                    while True:
                         next = chain.choice()
+                        if next in punctuation and random.randrange(ORDER) == 0:
+                            continue
+                        break
                     if len(result) + len(next) > 255:
                         break
                     result.append(next)
