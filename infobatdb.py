@@ -390,14 +390,13 @@ class Infobat(irc.IRCClient):
                 probabilities.append(float(chain[next]) / sum(chain.data))
             else:
                 probabilities.append(0)
-        probabilities = [100 * prob for prob in probabilities]
         tot_probability = reduce(operator.mul, probabilities)
         self.msg(target, 
             '%0.6f%% chance across %d probabilities; '
-            '%0.6f%% average, %0.6ff%% highest.' % (
-                tot_probability, len(probabilities), 
-                float(sum(probabilities)) / len(probabilities), 
-                max(probabilities)))
+            '%0.6f%% average, %0.6f%% highest.' % (
+                tot_probability * 100, len(probabilities), 
+                float(sum(probabilities)) / len(probabilities) * 100, 
+                max(probabilities) * 100))
 
 class InfobatFactory(protocol.ReconnectingClientFactory):
     protocol = Infobat
