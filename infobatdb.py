@@ -222,9 +222,9 @@ class Infobat(irc.IRCClient):
                 length += 1
                 if length == ORDER:
                     if action:
-                        self.db.act_update.append(queue)
+                        self.db.act_updates.append(queue)
                     else:
-                        self.db.start_update.append(queue)
+                        self.db.start_updates.append(queue)
                 queue = queue[-ORDER:]
     
     def kickedFrom(self, channel, kicker, message):
