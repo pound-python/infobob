@@ -78,16 +78,16 @@ class Database(object):
                 chainobj.merge(dbchain)
             self.db[chain] = chainobj.pack()
         self.updates.clear()
-        if self.start_update:
-            self.start_offset += len(self.start_update)
+        if self.start_updates:
+            self.start_offset += len(self.start_updates)
             self.start_fragment = self.update_fragment('__start%d__', 
-                self.start_fragment, ''.join(self.start_update))
-            self.start_update = []
-        if self.act_update:
-            self.actions += len(self.act_update)
+                self.start_fragment, ''.join(self.start_updates))
+            self.start_updates = []
+        if self.act_updates:
+            self.actions += len(self.act_updates)
             self.act_fragment = self.update_fragment('__act%d__', 
-                self.act_fragment, ''.join(self.act_update))
-            self.act_update = []
+                self.act_fragment, ''.join(self.act_updates))
+            self.act_updates = []
         self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
         self.db['__fragment__'] = '%d;%d' % (
             self.start_fragment, self.act_fragment)
@@ -103,7 +103,7 @@ class Database(object):
         return which
     
     def append_chain(self, chain, val):
-        self._updates[chain].append(val)
+        self.updates[chain].append(val)
     
     def _random_beginning(self):
         start_choice = random.randrange(self.start_offset + self.actions)
@@ -351,7 +351,7 @@ class Infobat(irc.IRCClient):
             "characters and spliced %d chains. Currently, I reference %d "
             "chains with %d beginnings (%d actions).") % (
                 timestr, self.wordcount, self.chaincount, len(self.db),
-                self.start_offset + self.actions, self.actions
+                self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
     
