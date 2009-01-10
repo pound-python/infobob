@@ -1,13 +1,15 @@
 #!/usr/bin/twistd -y
 from __future__ import with_statement
-import re, bsddb3, random, collections, threading, urllib, struct
+import re, random, collections, operator, urllib, struct
+import bsddb3
 from datetime import datetime
 from twisted.web import xmlrpc
 from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, task
 from twisted.protocols import policies
 from twisted.application import internet, service
-ORDER = 4
+ORDER = 5
+FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
 _words_regex = re.compile(r"(^\*)?[a-zA-Z',.!?\-:; ]")
 _paste_regex = re.compile(r"URL: (http://[a-zA-Z0-9/_.-]+)")
@@ -51,6 +53,93 @@ class Chain(object):
             chainobj = Chain(data)
         self.data = [v1 + v2 for v1, v2 in zip(self.data, chainobj.data)]
 
+class Database(object):
+    def __init__(self, filename):
+        self.filename = filename
+        self.start_updates = []
+        self.act_updates = []
+        self.updates = collections.defaultdict(Chain)
+        self.db = bsddb3.hashopen(filename, 'c')
+        if '__offset__' not in self.db:
+            self.db['__offset__'] = '0;0'
+            self.db['__fragment__'] = '0;0'
+            self.db['__start0__'] = ''
+            self.db['__act0__'] = ''
+            self.db.sync()
+        self.start_offset, self.actions = [
+            int(x) for x in self.db['__offset__'].split(';')]
+        self.start_fragment, self.act_fragment = [
+            int(x) for x in self.db['__fragment__'].split(';')]
+    
+    def sync(self):
+        for chain, chainobj in self.updates.iteritems():
+            dbchain = self.db.get(chain)
+            if dbchain:
+                chainobj.merge(dbchain)
+            self.db[chain] = chainobj.pack()
+        self.updates.clear()
+        if self.start_update:
+            self.start_offset += len(self.start_update)
+            self.start_fragment = self.update_fragment('__start%d__', 
+                self.start_fragment, ''.join(self.start_update))
+            self.start_update = []
+        if self.act_update:
+            self.actions += len(self.act_update)
+            self.act_fragment = self.update_fragment('__act%d__', 
+                self.act_fragment, ''.join(self.act_update))
+            self.act_update = []
+        self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
+        self.db['__fragment__'] = '%d;%d' % (
+            self.start_fragment, self.act_fragment)
+        self.db.sync()
+    
+    def update_fragment(self, fmt, which, value):
+        existing = self.db[fmt % which] + value
+        while existing:
+            self.db[fmt % which], existing = (
+                existing[:FRAGMENT], existing[FRAGMENT:])
+            if existing:
+                which += 1
+        return which
+    
+    def append_chain(self, chain, val):
+        self._updates[chain].append(val)
+    
+    def _random_beginning(self):
+        start_choice = random.randrange(self.start_offset + self.actions)
+        action = False
+        if start_choice < self.start_offset:
+            start_choice *= ORDER
+            which, offset = divmod(start_choice, FRAGMENT)
+            which = '__start%d__' % which
+        else:
+            start_choice = (start_choice - self.start_offset) * ORDER
+            which, offset = divmod(start_choice, FRAGMENT)
+            which = '__act%d__' % which
+            action = True
+        result = self.db[which][offset:offset + ORDER]
+        return result, action
+    
+    def random_beginning(self):
+        if not self:
+            raise ValueError('No beginnings in database')
+        while True:
+            result, action = self._random_beginning()
+            if result in self.db:
+                return result, action
+    
+    def __getitem__(self, key):
+        return self.db[key]
+    
+    def __contains__(self, key):
+        return key in self.db
+    
+    def get(self, key, default=None):
+        return self.db.get(key, default)
+    
+    def __nonzero__(self):
+        return self.start_offset + self.actions > 0
+
 _redent_pattern = re.compile('([^:;]*)([:;]|$)')
 _valid_first_words = set(
     'if elif else for while try except finally class def with'.split())
@@ -93,16 +182,6 @@ class Infobat(irc.IRCClient):
     versionNum = svnRevision
     versionEnv = 'twisted'
     
-    def _load_database(self):
-        self.db = bsddb3.hashopen(conf.get('database', 'db_file'), 'c')
-        if '__offset__' not in self.db:
-            self.db['__offset__'] = '0;0'
-            self.db['__start__'] = ''
-            self.db['__act__'] = ''
-            self.db.sync()
-        self.start_offset, self.actions = [
-            int(x) for x in self.db['__offset__'].split(';')]
-    
     def signedOn(self):
         nickserv_pw = conf.get('irc', 'nickserv_pw')
         if nickserv_pw:
@@ -110,40 +189,22 @@ class Infobat(irc.IRCClient):
         self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
-        self._updates = collections.defaultdict(Chain)
-        self._start_update = []
-        self._act_update = []
-        self.updates_lock = threading.Lock()
         self.looper.start(30)
+    
+    def _load_database(self):
+        self.db = Database(conf.get('database', 'db_file'))
+    
     def _sync_countdown(self):
-        if self.db is None: return
+        if self.db is None: 
+            return
         self.countdown -= 1
         if self.countdown == 0:
-            self._sync()
+            self.db.sync()
             self.countdown = self.max_countdown
-    def _sync(self):
-        for chain, chainobj in self._updates.iteritems():
-            dbchain = self.db.get(chain)
-            if dbchain:
-                chainobj.merge(dbchain)
-            packed = chainobj.pack()
-            self.db[chain] = packed
-        self._updates.clear()
-        if self._start_update:
-            self.start_offset += len(self._start_update)
-            self.db['__start__'] += ''.join(self._start_update)
-            self._start_update = []
-        if self._act_update:
-            self.actions += len(self._act_update)
-            self.db['__act__'] += ''.join(self._act_update)
-            self._act_update = []
-        self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
-        self.db.sync()
-    def append_chain(self, chain, val):
-        self._updates[chain].append(val)
-        self.countdown = self.max_countdown
+    
     def learn(self, string, action=False):
-        if self.db is None: return
+        if self.db is None: 
+            return
         if string.startswith('*'):
             action = True
             string = string.lstrip('*')
@@ -153,7 +214,7 @@ class Infobat(irc.IRCClient):
             w = w.group().lower()
             if not queue and w == ' ': continue
             if len(queue) == ORDER:
-                self.append_chain(queue, w)
+                self.db.append_chain(queue, w)
             if w[-1] in '.!?':
                 queue, length, action = '', 0, False
             else:
@@ -161,21 +222,24 @@ class Infobat(irc.IRCClient):
                 length += 1
                 if length == ORDER:
                     if action:
-                        self._act_update.append(queue)
+                        self.db.act_update.append(queue)
                     else:
-                        self._start_update.append(queue)
+                        self.db.start_update.append(queue)
                 queue = queue[-ORDER:]
     
     def kickedFrom(self, channel, kicker, message):
         self.join(channel)
+    
     def action(self, user, channel, message):
-        if not user: return
+        if not user: 
+            return
         if channel != self.nickname:
             self.learn(message, True)
+    
     def privmsg(self, user, channel, message):
         if not user: return
         user = user.split('!', 1)[0]
-        if (user.lower() == 'nickserv' and not self.identified and 
+        if (not self.identified and user.lower() == 'nickserv' and 
                 'identified' in message):
             self.identified = True
             self.join(conf.get('irc', 'channels'))
@@ -185,9 +249,6 @@ class Infobat(irc.IRCClient):
         if channel != self.nickname:
             self.learn(message)
         
-        if 'porcupine tree' in message.lower():
-            self.msg(target, "they're better live.")
-            return
         m = re.match(
             r'^s*%s\s*[,:> ]+(\S?.*?)[.!?]?\s*$' % self.nickname, message, re.I)
         if m:
@@ -200,35 +261,26 @@ class Infobat(irc.IRCClient):
         command_func = getattr(self, 'infobat_' + s_command[0], None)
         if command_func is not None:
             command_func(target, *s_command[1:])
-        elif self.db is not None and self.start_offset + self.actions > 0:
-            start_choice = random.randrange(self.start_offset + self.actions)
-            action = False
-            if start_choice < self.start_offset:
-                start_choice *= ORDER
-                result = self.db['__start__'][start_choice:start_choice + ORDER]
-            else:
-                start_choice = (start_choice - self.start_offset) * ORDER
-                result = self.db['__act__'][start_choice:start_choice + ORDER]
-                action = True
-            if result in self.db:
-                search, result = result, list(result)
-                while 1:
-                    chain = self.db.get(search)
-                    self.chaincount += 1
-                    if chain is None:
-                        break
-                    else:
-                        chain = Chain(chain)
-                    while True:
-                        next = chain.choice()
-                        if next in punctuation and random.randrange(ORDER) == 0:
-                            continue
-                        break
-                    if len(result) + len(next) > 255:
-                        break
-                    result.append(next)
-                    search = ''.join(result[-ORDER:])
-                result = ''.join(result)
+        elif self.db:
+            result, action = self.db.random_beginning()
+            search, result = result, list(result)
+            while 1:
+                chain = self.db.get(search)
+                if chain is None:
+                    break
+                else:
+                    chain = Chain(chain)
+                self.chaincount += 1
+                while True:
+                    next = chain.choice()
+                    if next in punctuation and random.randrange(ORDER) == 0:
+                        continue
+                    break
+                if len(result) + len(next) > 255:
+                    break
+                result.append(next)
+                search = ''.join(result[-ORDER:])
+            result = ''.join(result)
             if action:
                 self.me(target, result)
             else:
@@ -251,9 +303,12 @@ class Infobat(irc.IRCClient):
         return failure
     
     def infobat_sync(self, target):
-        if self.db is None: return
-        self._sync()
-        self.msg(target, 'Done.')
+        if self.db is not None: 
+            self.db.sync()
+            self.msg(target, 'Done.')
+        else:
+            self.msg(target, 'Database not loaded.')
+    
     def infobat_unlock(self, target):
         if self.db is not None:
             self.looper.stop()
@@ -263,6 +318,7 @@ class Infobat(irc.IRCClient):
             self.msg(target, 'Database unlocked.')
         else:
             self.msg(target, 'Database was unlocked.')
+    
     def infobat_lock(self, target):
         if self.db is None:
             self._load_database()
@@ -270,6 +326,7 @@ class Infobat(irc.IRCClient):
             self.msg(target, 'Database locked.')
         else:
             self.msg(target, 'Database was unlocked.')
+    
     def infobat_stats(self, target):
         if self.db is None: return
         delta = datetime.now() - start
@@ -293,10 +350,11 @@ class Infobat(irc.IRCClient):
         result = ("I have been online for %s. In that time, I've processed %d "
             "characters and spliced %d chains. Currently, I reference %d "
             "chains with %d beginnings (%d actions).") % (
-                timestr, self.wordcount, self.chaincount, len(self.db) - 3,
+                timestr, self.wordcount, self.chaincount, len(self.db),
                 self.start_offset + self.actions, self.actions
             )
         self.msg(target, result)
+    
     def infobat_divine(self, target, *seed):
         self.me(target, 'shakes the psychic black sphere.')
         r = random.Random(''.join(seed) + datetime.now().isoformat())
@@ -305,6 +363,41 @@ class Infobat(irc.IRCClient):
         st.close()
         l = r.choice(l).strip()
         self.msg(target, 'It says: "%s"' % l)
+    
+    def infobat_probability(self, target, *sentence):
+        if self.db is None: return
+        sentence = ' '.join(sentence)
+        if len(sentence) < ORDER:
+            return
+        start_count = 0
+        search = sentence[:ORDER]
+        for which in xrange(self.db.start_fragment + 1):
+            chain = self.db['__start%d__' % which]
+            idx = 0
+            while True:
+                idx = chain.find(search, idx)
+                if idx == -1:
+                    break
+                elif idx % ORDER == 0:
+                    start_count += 1
+        probabilities = [float(start_count) / self.db.start_offset]
+        for start in xrange(1, len(sentence) - ORDER - 1):
+            chunk = sentence[start:start + ORDER]
+            next = sentence[start + ORDER]
+            chain = self.db.get(chunk)
+            if chain:
+                chain = Chain(chain)
+                probabilities.append(float(chain[next]) / sum(chain.data))
+            else:
+                probabilities.append(0)
+        probabilities = [100 * prob for prob in probabilities]
+        tot_probability = reduce(operator.mul, probabilities)
+        self.msg(target, 
+            '%0.6f%% chance across %d probabilities; '
+            '%0.6f%% average, %0.6ff%% highest.' % (
+                tot_probability, len(probabilities), 
+                float(sum(probabilities)) / len(probabilities), 
+                max(probabilities)))
 
 class InfobatFactory(protocol.ReconnectingClientFactory):
     protocol = Infobat
