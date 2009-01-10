@@ -373,9 +373,9 @@ class Infobat(irc.IRCClient):
         search = sentence[:ORDER]
         for which in xrange(self.db.start_fragment + 1):
             chain = self.db['__start%d__' % which]
-            idx = 0
+            idx = -1
             while True:
-                idx = chain.find(search, idx)
+                idx = chain.find(search, idx + 1)
                 if idx == -1:
                     break
                 elif idx % ORDER == 0:
