@@ -381,7 +381,7 @@ class Infobat(irc.IRCClient):
                 elif idx % ORDER == 0:
                     start_count += 1
         probabilities = [float(start_count) / self.db.start_offset]
-        for start in xrange(1, len(sentence) - ORDER - 1):
+        for start in xrange(len(sentence) - ORDER):
             chunk = sentence[start:start + ORDER]
             next = sentence[start + ORDER]
             chain = self.db.get(chunk)
@@ -391,12 +391,16 @@ class Infobat(irc.IRCClient):
             else:
                 probabilities.append(0)
         tot_probability = reduce(operator.mul, probabilities)
+        average = sum(probabilities) / len(probabilities)
+        std_dev = (sum((i - average) ** 2 for i in probabilities) / 
+            len(probabilities)) ** .5
         self.msg(target, 
             '%0.6f%% chance across %d probabilities; '
-            '%0.6f%% average, %0.6f%% highest.' % (
+            '%0.6f%% average, standard deviation %0.6f%%, '
+            '%0.6f%% low, %0.6f%% high.' % (
                 tot_probability * 100, len(probabilities), 
-                float(sum(probabilities)) / len(probabilities) * 100, 
-                max(probabilities) * 100))
+                average * 100, std_dev * 100,
+                min(probabilities) * 100, max(probabilities) * 100))
 
 class InfobatFactory(protocol.ReconnectingClientFactory):
     protocol = Infobat
