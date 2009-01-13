@@ -394,11 +394,15 @@ class Infobat(irc.IRCClient):
         average = sum(probabilities) / len(probabilities)
         std_dev = (sum((i - average) ** 2 for i in probabilities) / 
             len(probabilities)) ** .5
+        try:
+            inverse = '%.0f' % (1 / tot_probability)
+        except (OverflowError, ZeroDivisionError):
+            inverse = 'inf'
         self.msg(target, 
-            '%0.6f%% chance (1 in %d) across %d probabilities; '
+            '%0.6f%% chance (1 in %s) across %d probabilities; '
             '%0.6f%% average, standard deviation %0.6f%%, '
             '%0.6f%% low, %0.6f%% high.' % (
-                tot_probability * 100, 1 / tot_probability, 
+                tot_probability * 100, inverse, 
                 len(probabilities), 
                 average * 100, std_dev * 100,
                 min(probabilities) * 100, max(probabilities) * 100))
