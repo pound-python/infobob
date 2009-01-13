@@ -395,10 +395,11 @@ class Infobat(irc.IRCClient):
         std_dev = (sum((i - average) ** 2 for i in probabilities) / 
             len(probabilities)) ** .5
         self.msg(target, 
-            '%0.6f%% chance across %d probabilities; '
+            '%0.6f%% chance (1 in %d) across %d probabilities; '
             '%0.6f%% average, standard deviation %0.6f%%, '
             '%0.6f%% low, %0.6f%% high.' % (
-                tot_probability * 100, len(probabilities), 
+                tot_probability * 100, 1 / tot_probability, 
+                len(probabilities), 
                 average * 100, std_dev * 100,
                 min(probabilities) * 100, max(probabilities) * 100))
 
