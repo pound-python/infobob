@@ -1,6 +1,6 @@
 #!/usr/bin/twistd -y
 from __future__ import with_statement
-import re, random, collections, operator, urllib, struct
+import re, random, collections, operator, urllib, struct, time
 import bsddb3
 from datetime import datetime
 from twisted.web import xmlrpc
@@ -8,18 +8,23 @@ from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, task
 from twisted.protocols import policies
 from twisted.application import internet, service
-ORDER = 5
+ORDER = 8
 FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
 _words_regex = re.compile(r"(^\*)?[a-zA-Z',.!?\-:; ]")
 _paste_regex = re.compile(r"URL: (http://[a-zA-Z0-9/_.-]+)")
+_lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)\b', re.I)
+_lol_messages = [
+    '#python is a no-LOL zone.', 
+    'i mean it: no LOL in #python.', 
+    'seriously, dude, no LOL in #python.']
 start = datetime.now()
 
 import ConfigParser
 conf = ConfigParser.ConfigParser(dict(port='6667', channels='#infobat'))
-conf.read(['infobat.cfg'])
+conf.read(['/usr/infobob/infobat.cfg'])
 
-_chain_struct = struct.Struct('>128H')
+_chain_struct = struct.Struct('>128I')
 class Chain(object):
     def __init__(self, data=None):
         if data is None:
@@ -183,6 +188,8 @@ class Infobat(irc.IRCClient):
     versionEnv = 'twisted'
     
     def signedOn(self):
+        self.lol_timeouts = {}
+        self.lol_offenses = {}
         nickserv_pw = conf.get('irc', 'nickserv_pw')
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
@@ -246,6 +253,18 @@ class Infobat(irc.IRCClient):
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
         target = (user if channel == self.nickname else channel)
        
+        if channel == '#python':
+            if message.startswith('!') and message.lstrip('!'):
+                self.notice(user, 'no triggers in %s.' % channel)
+            elif _lol_regex.search(message):
+                if self.lol_timeouts.get(user, 0) < time.time():
+                    self.lol_timeouts[user] = time.time() + 120
+                    self.lol_offenses[user] = 0
+                self.lol_offenses[user] += 1
+                message_idx = min(
+                    self.lol_offenses[user] - 1, len(_lol_messages))
+                self.notice(user, _lol_messages[message_idx])
+        
         if channel != self.nickname:
             self.learn(message)
         
@@ -261,7 +280,8 @@ class Infobat(irc.IRCClient):
         command_func = getattr(self, 'infobat_' + s_command[0], None)
         if command_func is not None:
             command_func(target, *s_command[1:])
-        elif self.db:
+        elif self.db and (channel in (
+                self.nickname, '#python-offtopic', '#infobob')):
             result, action = self.db.random_beginning()
             search, result = result, list(result)
             while 1:
@@ -348,9 +368,9 @@ class Infobat(irc.IRCClient):
         else:
             timestr = '%s and %s' % (', '.join(timestr[:-1]), timestr[-1])
         result = ("I have been online for %s. In that time, I've processed %d "
-            "characters and spliced %d chains. Currently, I reference %d "
+            "characters and spliced %d chains. Currently, I reference %s "
             "chains with %d beginnings (%d actions).") % (
-                timestr, self.wordcount, self.chaincount, len(self.db),
+                timestr, self.wordcount, self.chaincount, 'too many',
                 self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
