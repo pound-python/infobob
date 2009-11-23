@@ -1,23 +1,44 @@
 #!/usr/bin/twistd -y
 from __future__ import with_statement
-import re, random, collections, operator, urllib, struct, time
-import bsddb3
+import collections
+import operator
+import random
+import struct
+import bsddb
+import time
+import sys
+import re
+from lxml import html
+from urlparse import urljoin
 from datetime import datetime
+from pygments import highlight
+from pygments.filter import Filter
+from pygments.formatters import NullFormatter
+from pygments.lexers import PythonLexer
+from pygments.token import Token
 from twisted.web import xmlrpc
+from twisted.web.client import getPage
 from twisted.words.protocols import irc
-from twisted.internet import reactor, protocol, task
+from twisted.internet import reactor, protocol, task, defer
 from twisted.protocols import policies
+from twisted.enterprise import adbapi
 from twisted.application import internet, service
 ORDER = 8
 FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
 _words_regex = re.compile(r"(^\*)?[a-zA-Z',.!?\-:; ]")
-_paste_regex = re.compile(r"URL: (http://[a-zA-Z0-9/_.-]+)")
-_lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)\b', re.I)
+_lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
     '#python is a no-LOL zone.', 
     'i mean it: no LOL in #python.', 
     'seriously, dude, no LOL in #python.']
+_bad_pastebin_regex = re.compile(
+    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|dpaste\.com)/)'
+    r'([a-z0-9]+)/?', re.I)
+_pastebin_textareas = {
+    'pastebin.ca': 'content',
+    'pastebin.com': 'code2',
+    'pastebin.org': 'code2'}
 start = datetime.now()
 
 import ConfigParser
@@ -64,7 +85,7 @@ class Database(object):
         self.start_updates = []
         self.act_updates = []
         self.updates = collections.defaultdict(Chain)
-        self.db = bsddb3.hashopen(filename, 'c')
+        self.db = bsddb.hashopen(filename, 'c')
         if '__offset__' not in self.db:
             self.db['__offset__'] = '0;0'
             self.db['__fragment__'] = '0;0'
@@ -145,35 +166,53 @@ class Database(object):
     def __nonzero__(self):
         return self.start_offset + self.actions > 0
 
-_redent_pattern = re.compile('([^:;]*)([:;]|$)')
-_valid_first_words = set(
-    'if elif else for while try except finally class def with'.split())
+class _RedentFilter(Filter):
+    def filter(self, lexer, stream):
+        indent = 0
+        cruft_stack = []
+        eat_whitespace = False
+        for ttype, value in stream:
+            if eat_whitespace:
+                if ttype is Token.Text and value.isspace():
+                    continue
+                elif ttype is Token.Punctuation and value == ';':
+                    indent -= 1
+                    continue
+                else:
+                    yield Token.Text, '    ' * indent
+                    eat_whitespace = False
+            if ttype is Token.Punctuation:
+                if value == '{':
+                    cruft_stack.append('brace')
+                elif value == '}':
+                    assert cruft_stack.pop() == 'brace'
+                elif value == ':':
+                    if cruft_stack and cruft_stack[-1] == 'lambda':
+                        cruft_stack.pop()
+                    elif not cruft_stack:
+                        indent += 1
+                        yield ttype, value
+                        yield Token.Text, '\n'
+                        eat_whitespace = True
+                        continue
+                elif value == ';':
+                    yield Token.Text, '\n'
+                    eat_whitespace = True
+                    continue
+            elif ttype is Token.Keyword and value == 'lambda':
+                cruft_stack.append('lambda')
+            yield ttype, value
+
 def redent(s):
-    ret, indent = [['']], 0
-    for tok in _redent_pattern.finditer(s):
-        line, end = [st.strip() for st in tok.groups()]
-        first_word = line.partition(' ')[0]
-        if line:
-            if end == ':':
-                line += ':'
-            ret[-1].append(line)
-            if end == ':' and first_word in _valid_first_words:
-                indent += 1
-            if end != ':' or first_word in _valid_first_words:
-                ret.append(['    ' * indent])
-        else:
-            indent -= 1
-            ret[-1][0] = '    ' * indent
-    return '\n'.join(''.join(line) for line in ret)
+    lexer = PythonLexer()
+    lexer.add_filter(_RedentFilter())
+    return highlight(s, lexer, NullFormatter())
 
 def gen_shuffle(iter_obj):
     sample = range(len(iter_obj))
     while sample:
         n = sample.pop(random.randrange(len(sample)))
         yield iter_obj[n]
-
-svnURL = '$HeadURL$'.split()[1]
-svnRevision = 'r' + '$Revision$'.split()[1]
 
 class Infobat(irc.IRCClient):
     nickname = conf.get('irc', 'nickname')
@@ -182,9 +221,9 @@ class Infobat(irc.IRCClient):
     identified = False
     db = None
     
-    sourceURL = svnURL
-    versionName = 'infobat'
-    versionNum = svnRevision
+    sourceURL = 'https://code.launchpad.net/~pound-python/infobat/infobob'
+    versionName = 'infobat-infobob'
+    versionNum = 'latest'
     versionEnv = 'twisted'
     
     def signedOn(self):
@@ -264,6 +303,13 @@ class Infobat(irc.IRCClient):
                 message_idx = min(
                     self.lol_offenses[user] - 1, len(_lol_messages))
                 self.notice(user, _lol_messages[message_idx])
+            else:
+                m = _bad_pastebin_regex.search(message)
+                if m:
+                    base, _, _, which_bin, _, paste_id = m.groups()
+                    full_url = m.group(0)
+                    self.repaste(
+                        target, user, base, which_bin, paste_id, full_url)
         
         if channel != self.nickname:
             self.learn(message)
@@ -308,19 +354,44 @@ class Infobat(irc.IRCClient):
                     result = user + ', ' + result
                 self.msg(target, result)
     
-    def infobat_redent(self, target, paste_target, *text):
-        redented = redent(' '.join(text))
-        proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
-        d = proxy.callRemote('pastes.newPaste', 'python', redented)
-        d.addCallbacks(self._redent_success, self._redent_failure,
-            callbackArgs=(target, paste_target), errbackArgs=(target,))
+    @defer.inlineCallbacks
+    def repaste(self, target, user, base, which_bin, paste_id, full_url):
+        self.notice(user, 'in the future, please use a less awful pastebin '
+            'on #python. (you used %s.)' % which_bin)
+        
+        if which_bin == 'dpaste.com':
+            data = yield getPage(urljoin(base, '/%s/plain/' % paste_id))
+        else:
+            page = yield getPage(full_url)
+            tree = html.document_fromstring(page)
+            textareas = tree.xpath(
+                '//textarea[@name="%s"]' % _pastebin_textareas[which_bin])
+            data = textareas[0].text
+        
+        try:
+            new_paste_id = yield self.factory.paste_proxy.callRemote(
+                'pastes.newPaste', 'python', data)
+        except:
+            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            raise
+        else:
+            self.msg(target, 
+                'http://paste.pocoo.org/show/%s/ [repasted from %s]' % (
+                    new_paste_id, full_url))
     
-    def _redent_success(self, id, target, paste_target):
-        self.msg(target, '%s, http://paste.pocoo.org/show/%s/' % (
-            paste_target, id))
-    def _redent_failure(self, failure, target):
-        self.msg(target, 'Error: %s' % failure.getErrorMessage())
-        return failure
+    @defer.inlineCallbacks
+    def infobat_redent(self, target, paste_target, *text):
+        redented = (
+            redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
+        try:
+            paste_id = yield self.factory.paste_proxy.callRemote(
+                'pastes.newPaste', 'python', redented)
+        except:
+            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            raise
+        else:
+            self.msg(target, '%s, http://paste.pocoo.org/show/%s/' % (
+                paste_target, paste_id))
     
     def infobat_sync(self, target):
         if self.db is not None: 
@@ -428,6 +499,11 @@ class Infobat(irc.IRCClient):
                 min(probabilities) * 100, max(probabilities) * 100))
 
 class InfobatFactory(protocol.ReconnectingClientFactory):
+    def __init__(self):
+        self.dbpool = adbapi.ConnectionPool(
+            'sqlite3', conf.get('sqlite', 'db_file'))
+        self.paste_proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
+    
     protocol = Infobat
 
 ircFactory = InfobatFactory()
