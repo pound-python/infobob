@@ -26,7 +26,6 @@ from twisted.application import internet, service
 ORDER = 8
 FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
-_words_regex = re.compile(r"(^\*)?[a-zA-Z',.!?\-:; ]")
 _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
     '#python is a no-LOL zone.', 
@@ -263,10 +262,12 @@ class Infobat(irc.IRCClient):
             action = True
             string = string.lstrip('*')
         queue, length = '', 0
-        for w in _words_regex.finditer(string):
+        for w in string:
+            if w > '\x7f':
+                continue
             self.wordcount += 1
-            w = w.group().lower()
-            if not queue and w == ' ': continue
+            if not queue and w == ' ': 
+                continue
             if len(queue) == ORDER:
                 self.db.append_chain(queue, w)
             if w[-1] in '.!?':
