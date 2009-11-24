@@ -282,6 +282,12 @@ class Infobat(irc.IRCClient):
                         self.db.start_updates.append(queue)
                 queue = queue[-ORDER:]
     
+    def irc_INVITE(self, prefix, params):
+        self.invited(params[1], prefix)
+    
+    def invited(self, channel, inviter):
+        self.join(channel)
+    
     def kickedFrom(self, channel, kicker, message):
         self.join(channel)
     
