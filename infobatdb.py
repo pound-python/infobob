@@ -91,17 +91,21 @@ class Database(object):
             self.db['__fragment__'] = '0;0'
             self.db['__start0__'] = ''
             self.db['__act0__'] = ''
+            self.db['__length__'] = '0'
             self.db.sync()
         self.start_offset, self.actions = [
             int(x) for x in self.db['__offset__'].split(';')]
         self.start_fragment, self.act_fragment = [
             int(x) for x in self.db['__fragment__'].split(';')]
+        self.length = int(self.db['__length__'])
     
     def sync(self):
         for chain, chainobj in self.updates.iteritems():
             dbchain = self.db.get(chain)
             if dbchain:
                 chainobj.merge(dbchain)
+            else:
+                self.length += 1
             self.db[chain] = chainobj.pack()
         self.updates.clear()
         if self.start_updates:
@@ -117,6 +121,7 @@ class Database(object):
         self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
         self.db['__fragment__'] = '%d;%d' % (
             self.start_fragment, self.act_fragment)
+        self.db['__length__'] = str(self.length)
         self.db.sync()
     
     def update_fragment(self, fmt, which, value):
@@ -165,6 +170,9 @@ class Database(object):
     
     def __nonzero__(self):
         return self.start_offset + self.actions > 0
+    
+    def __len__(self):
+        return self.length
 
 class _RedentFilter(Filter):
     def filter(self, lexer, stream):
@@ -439,9 +447,9 @@ class Infobat(irc.IRCClient):
         else:
             timestr = '%s and %s' % (', '.join(timestr[:-1]), timestr[-1])
         result = ("I have been online for %s. In that time, I've processed %d "
-            "characters and spliced %d chains. Currently, I reference %s "
+            "characters and spliced %d chains. Currently, I reference %d "
             "chains with %d beginnings (%d actions).") % (
-                timestr, self.wordcount, self.chaincount, 'too many',
+                timestr, self.wordcount, self.chaincount, len(self.db),
                 self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
