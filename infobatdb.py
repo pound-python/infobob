@@ -227,9 +227,10 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.deferred.callback((page, self))
 
 def get_page(url, *a, **kw):
-    return client._makeGetterFactory(
-        url, MarginallyImprovedHTTPClientFactory, *a, **kw
-    ).deferred
+    scheme, host, port, path = _parse(url)
+    factory = MarginallyImprovedHTTPClientFactory(url, *args, **kwargs)
+    reactor.connectTCP(host, port, factory)
+    return factory.deferred
 
 def gen_shuffle(iter_obj):
     sample = range(len(iter_obj))
