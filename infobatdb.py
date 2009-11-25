@@ -391,9 +391,6 @@ class Infobat(irc.IRCClient):
     
     @defer.inlineCallbacks
     def repaste(self, target, user, base, which_bin, paste_id, full_url):
-        self.notice(user, 'in the future, please use a less awful pastebin '
-            'on #python. (you used %s.)' % which_bin)
-        
         if which_bin == 'dpaste.com':
             data, _ = yield get_page(urljoin(base, '/%s/plain/' % paste_id))
         else:
@@ -411,8 +408,9 @@ class Infobat(irc.IRCClient):
             raise
         else:
             self.msg(target, 
-                'http://paste.pocoo.org/show/%s/ [repasted from %s]' % (
-                    new_paste_id, full_url))
+                'http://paste.pocoo.org/show/%s/ (repasted from %s for %s -- '
+                'in the future, use a less awful pastebin)' % (
+                    new_paste_id, full_url, user))
     
     @defer.inlineCallbacks
     def infobat_redent(self, target, paste_target, *text):

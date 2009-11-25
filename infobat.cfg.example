@@ -7,3 +7,6 @@ nickserv_pw:    -
 [database]
 sync_time:      10
 db_file:        infobat.chainsdb
+
+[sqlite]
+db_file:        infobat.chainsdb
