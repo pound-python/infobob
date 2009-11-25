@@ -9,6 +9,7 @@ import time
 import sys
 import re
 from lxml import html
+from urllib import urlencode
 from urlparse import urljoin
 from datetime import datetime
 from pygments import highlight
@@ -16,8 +17,7 @@ from pygments.filter import Filter
 from pygments.formatters import NullFormatter
 from pygments.lexers import PythonLexer
 from pygments.token import Token
-from twisted.web import xmlrpc
-from twisted.web.client import getPage
+from twisted.web import xmlrpc, client
 from twisted.words.protocols import irc
 from twisted.internet import reactor, protocol, task, defer
 from twisted.protocols import policies
@@ -215,6 +215,22 @@ def redent(s):
     lexer.add_filter(_RedentFilter())
     return highlight(s, lexer, NullFormatter())
 
+class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
+    handleStatus_301 = handleStatus_302 = handleStatus_302 = lambda self: None
+
+class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
+    protocol = NoRedirectHTTPPageGetter
+    
+    def page(self, page):
+        if self.waiting:
+            self.waiting = 0
+            self.deferred.callback((page, self))
+
+def get_page(url, *a, **kw):
+    return client._makeGetterFactory(
+        url, MarginallyImprovedHTTPClientFactory, *a, **kw
+    ).deferred
+
 def gen_shuffle(iter_obj):
     sample = range(len(iter_obj))
     while sample:
@@ -281,6 +297,10 @@ class Infobat(irc.IRCClient):
                     else:
                         self.db.start_updates.append(queue)
                 queue = queue[-ORDER:]
+    
+    def msg(self, target, message):
+        # Prevent excess flood.
+        irc.IRCClient.msg(self, target, message[:512])
     
     def irc_INVITE(self, prefix, params):
         self.invited(params[1], prefix)
@@ -375,9 +395,9 @@ class Infobat(irc.IRCClient):
             'on #python. (you used %s.)' % which_bin)
         
         if which_bin == 'dpaste.com':
-            data = yield getPage(urljoin(base, '/%s/plain/' % paste_id))
+            data, _ = yield get_page(urljoin(base, '/%s/plain/' % paste_id))
         else:
-            page = yield getPage(full_url)
+            page, _ = yield get_page(full_url)
             tree = html.document_fromstring(page)
             textareas = tree.xpath(
                 '//textarea[@name="%s"]' % _pastebin_textareas[which_bin])
@@ -407,6 +427,24 @@ class Infobat(irc.IRCClient):
         else:
             self.msg(target, '%s, http://paste.pocoo.org/show/%s/' % (
                 paste_target, paste_id))
+    
+    @defer.inlineCallbacks
+    def infobat_codepad(self, target, paste_target, *text):
+        redented = (
+            redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
+        post_data = urlencode(dict(
+            code=redented, lang='Python', submit='Submit', run='True'))
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        try:
+            _, fac = yield get_page('http://codepad.org/', 
+                method='POST', postdata=post_data, headers=headers)
+        except:
+            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            raise
+        else:
+            paste_url = urljoin(
+                'http://codepad.org/', fac.response_headers['location'][0])
+            self.msg(target, '%s, %s' % (paste_target, paste_url))
     
     def infobat_sync(self, target):
         if self.db is not None: 
