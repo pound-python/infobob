@@ -32,8 +32,8 @@ _lol_messages = [
     'i mean it: no LOL in #python.', 
     'seriously, dude, no LOL in #python.']
 _bad_pastebin_regex = re.compile(
-    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|dpaste\.com)/)'
-    r'([a-z0-9]+)/?', re.I)
+    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|dpaste\.com|'
+    r'etherpad\.com)/)([a-z0-9]+)/?', re.I)
 _pastebin_textareas = {
     'pastebin.ca': 'content',
     'pastebin.com': 'code2',
@@ -227,8 +227,8 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.deferred.callback((page, self))
 
 def get_page(url, *a, **kw):
-    scheme, host, port, path = _parse(url)
-    factory = MarginallyImprovedHTTPClientFactory(url, *args, **kwargs)
+    scheme, host, port, path = client._parse(url)
+    factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
     reactor.connectTCP(host, port, factory)
     return factory.deferred
 
@@ -394,6 +394,10 @@ class Infobat(irc.IRCClient):
     def repaste(self, target, user, base, which_bin, paste_id, full_url):
         if which_bin == 'dpaste.com':
             data, _ = yield get_page(urljoin(base, '/%s/plain/' % paste_id))
+        elif which_bin == 'etherpad.com':
+            data, _ = yield get_page((
+                'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
+            ) % paste_id)
         else:
             page, _ = yield get_page(full_url)
             tree = html.document_fromstring(page)
