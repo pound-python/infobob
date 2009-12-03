@@ -19,6 +19,7 @@ from pygments.lexers import PythonLexer
 from pygments.token import Token
 from twisted.web import xmlrpc, client
 from twisted.words.protocols import irc
+from twitsed.python import log
 from twisted.internet import reactor, protocol, task, defer
 from twisted.protocols import policies
 from twisted.enterprise import adbapi
@@ -32,8 +33,8 @@ _lol_messages = [
     'i mean it: no LOL in #python.', 
     'seriously, dude, no LOL in #python.']
 _bad_pastebin_regex = re.compile(
-    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|dpaste\.com|'
-    r'etherpad\.com)/)([a-z0-9]+)/?', re.I)
+    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|etherpad\.com)/)'
+    r'([a-z0-9]+)/?', re.I)
 _pastebin_textareas = {
     'pastebin.ca': 'content',
     'pastebin.com': 'code2',
@@ -326,7 +327,11 @@ class Infobat(irc.IRCClient):
             self.identified = True
             self.join(conf.get('irc', 'channels'))
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
-        target = (user if channel == self.nickname else channel)
+        if channel == self.nickname:
+            log.msg('privmsg from %s: %s' % (user, message))
+            target = user
+        else:
+            target = channel
        
         if channel == '#python':
             if message.startswith('!') and message.lstrip('!'):
@@ -392,9 +397,9 @@ class Infobat(irc.IRCClient):
     
     @defer.inlineCallbacks
     def repaste(self, target, user, base, which_bin, paste_id, full_url):
-        if which_bin == 'dpaste.com':
-            data, _ = yield get_page(urljoin(base, '/%s/plain/' % paste_id))
-        elif which_bin == 'etherpad.com':
+        self.notice(user, 'in the future, please use a less awful pastebin '
+            '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
+        if which_bin == 'etherpad.com':
             data, _ = yield get_page((
                 'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
             ) % paste_id)
@@ -413,9 +418,8 @@ class Infobat(irc.IRCClient):
             raise
         else:
             self.msg(target, 
-                'http://paste.pocoo.org/show/%s/ (repasted from %s for %s -- '
-                'in the future, use a less awful pastebin)' % (
-                    new_paste_id, full_url, user))
+                'http://paste.pocoo.org/show/%s/ (repasted for %s)' % (
+                    new_paste_id, user))
     
     @defer.inlineCallbacks
     def infobat_redent(self, target, paste_target, *text):
