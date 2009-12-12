@@ -1,32 +1,21 @@
-#!/usr/bin/twistd -y
-from __future__ import with_statement
-import collections
-import operator
-import random
-import struct
-import bsddb
-import time
-import sys
-import re
+from twisted.internet import reactor, protocol, task, defer
+from twisted.words.protocols import irc
+from twisted.enterprise import adbapi
+from twisted.python import log
+from twisted.web import xmlrpc
+from infobat.redent import redent
+from infobat.config import conf
+from infobat import chains, http
+from datetime import datetime
 from lxml import html
 from urllib import urlencode
 from urlparse import urljoin
-from datetime import datetime
-from pygments import highlight
-from pygments.filter import Filter
-from pygments.formatters import NullFormatter
-from pygments.lexers import PythonLexer
-from pygments.token import Token
-from twisted.web import xmlrpc, client
-from twisted.words.protocols import irc
-from twitsed.python import log
-from twisted.internet import reactor, protocol, task, defer
-from twisted.protocols import policies
-from twisted.enterprise import adbapi
-from twisted.application import internet, service
-ORDER = 8
-FRAGMENT = ORDER * 16384
-punctuation = set(' .!?')
+import operator
+import random
+import time
+import sys
+import re
+
 _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
     '#python is a no-LOL zone.', 
@@ -39,205 +28,8 @@ _pastebin_textareas = {
     'pastebin.ca': 'content',
     'pastebin.com': 'code2',
     'pastebin.org': 'code2'}
+
 start = datetime.now()
-
-import ConfigParser
-conf = ConfigParser.ConfigParser(dict(port='6667', channels='#infobat'))
-conf.read(['/usr/infobob/infobat.cfg'])
-
-_chain_struct = struct.Struct('>128I')
-class Chain(object):
-    def __init__(self, data=None):
-        if data is None:
-            self.data = [0] * 128
-        else:
-            self.data = list(_chain_struct.unpack(data))
-    
-    def __setitem__(self, key, value):
-        self.data[ord(key)] = value
-    def __getitem__(self, key):
-        return self.data[ord(key)]
-    def __delitem__(self, key):
-        self.data[ord(key)] = 0
-    
-    def pack(self):
-        return _chain_struct.pack(*self.data)
-    
-    def choice(self):
-        which = random.randrange(sum(self.data))
-        partial_sum = 0
-        for index, val in enumerate(self.data):
-            if val + partial_sum > which:
-                return chr(index)
-            partial_sum += val
-    
-    def append(self, key):
-        self.data[ord(key)] += 1
-    
-    def merge(self, data=None, chainobj=None):
-        if chainobj is None:
-            chainobj = Chain(data)
-        self.data = [v1 + v2 for v1, v2 in zip(self.data, chainobj.data)]
-
-class Database(object):
-    def __init__(self, filename):
-        self.filename = filename
-        self.start_updates = []
-        self.act_updates = []
-        self.updates = collections.defaultdict(Chain)
-        self.db = bsddb.hashopen(filename, 'c')
-        if '__offset__' not in self.db:
-            self.db['__offset__'] = '0;0'
-            self.db['__fragment__'] = '0;0'
-            self.db['__start0__'] = ''
-            self.db['__act0__'] = ''
-            self.db['__length__'] = '0'
-            self.db.sync()
-        self.start_offset, self.actions = [
-            int(x) for x in self.db['__offset__'].split(';')]
-        self.start_fragment, self.act_fragment = [
-            int(x) for x in self.db['__fragment__'].split(';')]
-        self.length = int(self.db['__length__'])
-    
-    def sync(self):
-        for chain, chainobj in self.updates.iteritems():
-            dbchain = self.db.get(chain)
-            if dbchain:
-                chainobj.merge(dbchain)
-            else:
-                self.length += 1
-            self.db[chain] = chainobj.pack()
-        self.updates.clear()
-        if self.start_updates:
-            self.start_offset += len(self.start_updates)
-            self.start_fragment = self.update_fragment('__start%d__', 
-                self.start_fragment, ''.join(self.start_updates))
-            self.start_updates = []
-        if self.act_updates:
-            self.actions += len(self.act_updates)
-            self.act_fragment = self.update_fragment('__act%d__', 
-                self.act_fragment, ''.join(self.act_updates))
-            self.act_updates = []
-        self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
-        self.db['__fragment__'] = '%d;%d' % (
-            self.start_fragment, self.act_fragment)
-        self.db['__length__'] = str(self.length)
-        self.db.sync()
-    
-    def update_fragment(self, fmt, which, value):
-        existing = self.db[fmt % which] + value
-        while existing:
-            self.db[fmt % which], existing = (
-                existing[:FRAGMENT], existing[FRAGMENT:])
-            if existing:
-                which += 1
-        return which
-    
-    def append_chain(self, chain, val):
-        self.updates[chain].append(val)
-    
-    def _random_beginning(self):
-        start_choice = random.randrange(self.start_offset + self.actions)
-        action = False
-        if start_choice < self.start_offset:
-            start_choice *= ORDER
-            which, offset = divmod(start_choice, FRAGMENT)
-            which = '__start%d__' % which
-        else:
-            start_choice = (start_choice - self.start_offset) * ORDER
-            which, offset = divmod(start_choice, FRAGMENT)
-            which = '__act%d__' % which
-            action = True
-        result = self.db[which][offset:offset + ORDER]
-        return result, action
-    
-    def random_beginning(self):
-        if not self:
-            raise ValueError('No beginnings in database')
-        while True:
-            result, action = self._random_beginning()
-            if result in self.db:
-                return result, action
-    
-    def __getitem__(self, key):
-        return self.db[key]
-    
-    def __contains__(self, key):
-        return key in self.db
-    
-    def get(self, key, default=None):
-        return self.db.get(key, default)
-    
-    def __nonzero__(self):
-        return self.start_offset + self.actions > 0
-    
-    def __len__(self):
-        return self.length
-
-class _RedentFilter(Filter):
-    def filter(self, lexer, stream):
-        indent = 0
-        cruft_stack = []
-        eat_whitespace = False
-        for ttype, value in stream:
-            if eat_whitespace:
-                if ttype is Token.Text and value.isspace():
-                    continue
-                elif ttype is Token.Punctuation and value == ';':
-                    indent -= 1
-                    continue
-                else:
-                    yield Token.Text, '    ' * indent
-                    eat_whitespace = False
-            if ttype is Token.Punctuation:
-                if value == '{':
-                    cruft_stack.append('brace')
-                elif value == '}':
-                    assert cruft_stack.pop() == 'brace'
-                elif value == ':':
-                    if cruft_stack and cruft_stack[-1] == 'lambda':
-                        cruft_stack.pop()
-                    elif not cruft_stack:
-                        indent += 1
-                        yield ttype, value
-                        yield Token.Text, '\n'
-                        eat_whitespace = True
-                        continue
-                elif value == ';':
-                    yield Token.Text, '\n'
-                    eat_whitespace = True
-                    continue
-            elif ttype is Token.Keyword and value == 'lambda':
-                cruft_stack.append('lambda')
-            yield ttype, value
-
-def redent(s):
-    lexer = PythonLexer()
-    lexer.add_filter(_RedentFilter())
-    return highlight(s, lexer, NullFormatter())
-
-class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
-    handleStatus_301 = handleStatus_302 = handleStatus_302 = lambda self: None
-
-class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
-    protocol = NoRedirectHTTPPageGetter
-    
-    def page(self, page):
-        if self.waiting:
-            self.waiting = 0
-            self.deferred.callback((page, self))
-
-def get_page(url, *a, **kw):
-    scheme, host, port, path = client._parse(url)
-    factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
-    reactor.connectTCP(host, port, factory)
-    return factory.deferred
-
-def gen_shuffle(iter_obj):
-    sample = range(len(iter_obj))
-    while sample:
-        n = sample.pop(random.randrange(len(sample)))
-        yield iter_obj[n]
 
 class Infobat(irc.IRCClient):
     nickname = conf.get('irc', 'nickname')
@@ -257,13 +49,15 @@ class Infobat(irc.IRCClient):
         nickserv_pw = conf.get('irc', 'nickserv_pw')
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
+        else:
+            self.join(conf.get('irc', 'channels'))
         self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
         self.looper.start(30)
     
     def _load_database(self):
-        self.db = Database(conf.get('database', 'db_file'))
+        self.db = chains.Database(conf.get('database', 'db_file'))
     
     def _sync_countdown(self):
         if self.db is None: 
@@ -276,29 +70,7 @@ class Infobat(irc.IRCClient):
     def learn(self, string, action=False):
         if self.db is None: 
             return
-        if string.startswith('*'):
-            action = True
-            string = string.lstrip('*')
-        queue, length = '', 0
-        for w in string:
-            if w > '\x7f':
-                continue
-            self.wordcount += 1
-            if not queue and w == ' ': 
-                continue
-            if len(queue) == ORDER:
-                self.db.append_chain(queue, w)
-            if w[-1] in '.!?':
-                queue, length, action = '', 0, False
-            else:
-                queue += w
-                length += 1
-                if length == ORDER:
-                    if action:
-                        self.db.act_updates.append(queue)
-                    else:
-                        self.db.start_updates.append(queue)
-                queue = queue[-ORDER:]
+        self.db.learn(string, action)
     
     def msg(self, target, message):
         # Prevent excess flood.
@@ -342,7 +114,7 @@ class Infobat(irc.IRCClient):
                     self.lol_offenses[user] = 0
                 self.lol_offenses[user] += 1
                 message_idx = min(
-                    self.lol_offenses[user] - 1, len(_lol_messages))
+                    self.lol_offenses[user], len(_lol_messages)) - 1
                 self.notice(user, _lol_messages[message_idx])
             else:
                 m = _bad_pastebin_regex.search(message)
@@ -369,25 +141,7 @@ class Infobat(irc.IRCClient):
             command_func(target, *s_command[1:])
         elif self.db and (channel in (
                 self.nickname, '#python-offtopic', '#infobob')):
-            result, action = self.db.random_beginning()
-            search, result = result, list(result)
-            while 1:
-                chain = self.db.get(search)
-                if chain is None:
-                    break
-                else:
-                    chain = Chain(chain)
-                self.chaincount += 1
-                while True:
-                    next = chain.choice()
-                    if next in punctuation and random.randrange(ORDER) == 0:
-                        continue
-                    break
-                if len(result) + len(next) > 255:
-                    break
-                result.append(next)
-                search = ''.join(result[-ORDER:])
-            result = ''.join(result)
+            action, result = self.db.splice()
             if action:
                 self.me(target, result)
             else:
@@ -400,11 +154,11 @@ class Infobat(irc.IRCClient):
         self.notice(user, 'in the future, please use a less awful pastebin '
             '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
         if which_bin == 'etherpad.com':
-            data, _ = yield get_page((
+            data, _ = yield http.get_page((
                 'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
             ) % paste_id)
         else:
-            page, _ = yield get_page(full_url)
+            page, _ = yield http.get_page(full_url)
             tree = html.document_fromstring(page)
             textareas = tree.xpath(
                 '//textarea[@name="%s"]' % _pastebin_textareas[which_bin])
@@ -443,7 +197,7 @@ class Infobat(irc.IRCClient):
             code=redented, lang='Python', submit='Submit', run='True'))
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         try:
-            _, fac = yield get_page('http://codepad.org/', 
+            _, fac = yield http.get_page('http://codepad.org/', 
                 method='POST', postdata=post_data, headers=headers)
         except:
             self.msg(target, 'Error: %r' % sys.exc_info()[1])
@@ -501,7 +255,7 @@ class Infobat(irc.IRCClient):
         result = ("I have been online for %s. In that time, I've processed %d "
             "characters and spliced %d chains. Currently, I reference %d "
             "chains with %d beginnings (%d actions).") % (
-                timestr, self.wordcount, self.chaincount, len(self.db),
+                timestr, self.db.wordcount, self.db.chaincount, len(self.db),
                 self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
@@ -518,10 +272,10 @@ class Infobat(irc.IRCClient):
     def infobat_probability(self, target, *sentence):
         if self.db is None: return
         sentence = ' '.join(sentence)
-        if len(sentence) < ORDER:
+        if len(sentence) < chains.ORDER:
             return
         start_count = 0
-        search = sentence[:ORDER]
+        search = sentence[:chains.ORDER]
         for which in xrange(self.db.start_fragment + 1):
             chain = self.db['__start%d__' % which]
             idx = -1
@@ -529,15 +283,15 @@ class Infobat(irc.IRCClient):
                 idx = chain.find(search, idx + 1)
                 if idx == -1:
                     break
-                elif idx % ORDER == 0:
+                elif idx % chains.ORDER == 0:
                     start_count += 1
         probabilities = [float(start_count) / self.db.start_offset]
-        for start in xrange(len(sentence) - ORDER):
-            chunk = sentence[start:start + ORDER]
-            next = sentence[start + ORDER]
+        for start in xrange(len(sentence) - chains.ORDER):
+            chunk = sentence[start:start + chains.ORDER]
+            next = sentence[start + chains.ORDER]
             chain = self.db.get(chunk)
             if chain:
-                chain = Chain(chain)
+                chain = chains.Chain(chain)
                 probabilities.append(float(chain[next]) / sum(chain.data))
             else:
                 probabilities.append(0)
@@ -565,10 +319,3 @@ class InfobatFactory(protocol.ReconnectingClientFactory):
         self.paste_proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
     
     protocol = Infobat
-
-ircFactory = InfobatFactory()
-ircService = internet.TCPClient(
-    conf.get('irc', 'server'), conf.getint('irc', 'port'), ircFactory, 20, None)
-
-application = service.Application('infobat')
-ircService.setServiceParent(application)
