@@ -47,7 +47,7 @@ class InfobatChild(amp.InfobatChildBase):
     def connectionLost(self, reason):
         if self.db:
             self.db.sync()
-        child.AMPChild.connectionLost(self, reason)
+        amp.InfobatChildBase.connectionLost(self, reason)
     
     def _load_database(self):
         self.db = chains.Database(conf.get('database', 'db_file'))

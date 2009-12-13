@@ -109,3 +109,6 @@ class InfobatChildBase(child.AMPChild):
     
     def notice(self, target, message):
         self.callRemote(NoticeOut, target=target, message=message)
+    
+    def connectionLost(self, reason):
+        child.AMPChild.connectionLost(self, reason)

@@ -27,7 +27,7 @@ class Infobat(irc.IRCClient):
                 env=dict(PYTHONPATH=os.environ.get('PYTHONPATH', '')),
                 args=(
                     conf.config_loc, 
-                    self.irc.factory.start.strftime(ISOFORMAT),
+                    self.factory.start.strftime(amp.ISOFORMAT),
                 ),
             ),
             ampChild=commands.InfobatChild, ampParent=amp.InfobatParent,
