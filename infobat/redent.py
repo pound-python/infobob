@@ -24,6 +24,10 @@ class _RedentFilter(Filter):
                     cruft_stack.append('brace')
                 elif value == '}':
                     assert cruft_stack.pop() == 'brace'
+                if value == '[':
+                    cruft_stack.append('bracket')
+                elif value == ']':
+                    assert cruft_stack.pop() == 'bracket'
                 elif value == ':':
                     if cruft_stack and cruft_stack[-1] == 'lambda':
                         cruft_stack.pop()
