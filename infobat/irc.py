@@ -56,6 +56,10 @@ class Infobat(irc.IRCClient):
             user=user, channel=channel, message=message)
     
     def privmsg(self, user, channel, message):
+        if (not self.identified and user.lower().startswith('nickserv!') and 
+                'identified' in message):
+            self.identified = True
+            self.join(conf.get('irc', 'channels'))
         self.pool.doWork(amp.PrivmsgIn, 
             user=user, channel=channel, message=message)
 
