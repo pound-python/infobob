@@ -61,6 +61,9 @@ class Database(object):
         self.length = int(self.db['__length__'])
         self.wordcount = self.chaincount = 0
     
+    def close(self):
+        self.db.close()
+    
     def sync(self):
         for chain, chainobj in self.updates.iteritems():
             dbchain = self.db.get(chain)
