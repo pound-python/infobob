@@ -10,6 +10,7 @@ import os
 
 class Infobat(irc.IRCClient):
     identified = False
+    pool = None
     
     sourceURL = 'https://code.launchpad.net/~pound-python/infobat/infobob'
     versionName = 'infobat-infobob'
@@ -52,16 +53,18 @@ class Infobat(irc.IRCClient):
         self.join(channel)
     
     def action(self, user, channel, message):
-        self.pool.doWork(amp.ActionIn,
-            user=user, channel=channel, message=message)
+        if self.pool:
+            self.pool.doWork(amp.ActionIn,
+                user=user, channel=channel, message=message)
     
     def privmsg(self, user, channel, message):
         if (not self.identified and user.lower().startswith('nickserv!') and 
                 'identified' in message):
             self.identified = True
             self.join(conf.get('irc', 'channels'))
-        self.pool.doWork(amp.PrivmsgIn, 
-            user=user, channel=channel, message=message)
+        if self.pool:
+            self.pool.doWork(amp.PrivmsgIn, 
+                user=user, channel=channel, message=message)
 
 class InfobatFactory(protocol.ReconnectingClientFactory):
     def __init__(self):
