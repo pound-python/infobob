@@ -76,10 +76,6 @@ class InfobatParent(amp.AMP):
 class InfobatChildStarter(ProcessStarter):
     def __init__(self, *a, **kw):
         self.irc = kw.pop('irc')
-        kw['args'] = kw.get('args', ()) + (
-            conf.config_loc, 
-            self.irc.factory.start.strftime(ISOFORMAT),
-        )
         super(InfobatChildStarter, self).__init__(*a, **kw)
     
     def startAMPProcess(self, ampChild, ampParent):

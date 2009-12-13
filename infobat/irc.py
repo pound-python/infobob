@@ -6,6 +6,7 @@ from ampoule.pool import ProcessPool
 from infobat.config import conf
 from infobat import amp, commands, chains
 from datetime import datetime
+import os
 
 class Infobat(irc.IRCClient):
     identified = False
@@ -20,7 +21,14 @@ class Infobat(irc.IRCClient):
     
     def signedOn(self):
         self.pool = ProcessPool(
-            starter=amp.InfobatChildStarter(irc=self),
+            starter=amp.InfobatChildStarter(
+                irc=self, 
+                env=dict(PYTHONPATH=os.environ.get('PYTHONPATH', '')),
+                args=(
+                    conf.config_loc, 
+                    self.irc.factory.start.strftime(ISOFORMAT),
+                ),
+            ),
             ampChild=commands.InfobatChild, ampParent=amp.InfobatParent,
             min=1, max=1, maxIdle=3600, recycleAfter=None)
         self.pool.start()
