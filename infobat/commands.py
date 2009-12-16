@@ -5,7 +5,7 @@ from twisted.python import log, reflect
 from twisted.web import xmlrpc
 from infobat.redent import redent
 from infobat.config import conf
-from infobat import amp, chains, http
+from infobat import amp, chains, database, http
 from datetime import datetime
 from lxml import html
 from urllib import urlencode
@@ -30,15 +30,12 @@ _pastebin_textareas = {
     'pastebin.org': 'code2'}
 
 class InfobatChild(amp.InfobatChildBase):
-    db = None
+    db = dbpool = None
     
     def __init__(self):
         amp.InfobatChildBase.__init__(self)
-        self.dbpool = adbapi.ConnectionPool(
-            'sqlite3', conf.get('sqlite', 'db_file'))
+        self.dbpool = database.InfobatDatabaseRunner()
         self.paste_proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
-        self.lol_timeouts = {}
-        self.lol_offenses = {}
         self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
@@ -47,6 +44,8 @@ class InfobatChild(amp.InfobatChildBase):
     def connectionLost(self, reason):
         if self.db:
             self.db.sync()
+        if self.dbpool:
+            self.dbpool.close()
         amp.InfobatChildBase.connectionLost(self, reason)
     
     def _load_database(self):
@@ -85,13 +84,7 @@ class InfobatChild(amp.InfobatChildBase):
             if message.startswith('!') and message.lstrip('!'):
                 self.notice(user, 'no triggers in %s.' % channel)
             elif _lol_regex.search(message):
-                if self.lol_timeouts.get(user, 0) < time.time():
-                    self.lol_timeouts[user] = time.time() + 120
-                    self.lol_offenses[user] = 0
-                self.lol_offenses[user] += 1
-                message_idx = min(
-                    self.lol_offenses[user], len(_lol_messages)) - 1
-                self.notice(user, _lol_messages[message_idx])
+                self.do_lol(user)
             else:
                 m = _bad_pastebin_regex.search(message)
                 if m:
@@ -124,6 +117,12 @@ class InfobatChild(amp.InfobatChildBase):
                 if channel != self.nickname:
                     result = user + ', ' + result
                 self.msg(target, result)
+    
+    @defer.inlineCallbacks
+    def do_lol(self, nick):
+        offenses = yield self.dbpool.add_lol(nick)
+        message_idx = min(offenses, len(_lol_messages)) - 1
+        self.notice(nick, _lol_messages[message_idx])
     
     @defer.inlineCallbacks
     def repaste(self, target, user, base, which_bin, paste_id, full_url):

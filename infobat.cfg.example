@@ -9,4 +9,4 @@ sync_time:      10
 db_file:        infobat.chainsdb
 
 [sqlite]
-db_file:        infobat.chainsdb
+db_file:        infobat.sqlite

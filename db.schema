@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS lol_offenses (
+    username TEXT NOT NULL,
+    time_of INTEGER NOT NULL,
+    PRIMARY KEY(username, time_of)
+);
