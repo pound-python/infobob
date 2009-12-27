@@ -11,6 +11,7 @@ import os
 class Infobat(irc.IRCClient):
     identified = False
     pool = None
+    outstandingPings = 0
     
     sourceURL = 'https://code.launchpad.net/~pound-python/infobat/infobob'
     versionName = 'infobat-infobob'
@@ -38,6 +39,17 @@ class Infobat(irc.IRCClient):
             self.msg('NickServ', 'identify %s' % nickserv_pw)
         else:
             self.join(conf.get('irc', 'channels'))
+        self.ping_looper = task.LoopingCall(self.pingServer)
+        self.ping_looper.start(60)
+    
+    def pingServer(self):
+        if self.outstandingPings > 5:
+            self.transport.loseConnection()
+        self.sendLine('PING bollocks')
+        self.outstandingPings += 1
+    
+    def irc_PONG(self, prefix, params):
+        self.outstandingPings -= 1
     
     def msg(self, target, message):
         # Prevent excess flood.
