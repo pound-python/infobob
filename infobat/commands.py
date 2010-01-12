@@ -138,17 +138,11 @@ class InfobatChild(amp.InfobatChildBase):
             textareas = tree.xpath(
                 '//textarea[@name="%s"]' % _pastebin_textareas[which_bin])
             data = textareas[0].text
-        
-        try:
-            new_paste_id = yield self.paste_proxy.callRemote(
-                'pastes.newPaste', 'python', data)
-        except:
-            self.msg(target, 'Error: %r' % sys.exc_info()[1])
-            raise
-        else:
-            self.msg(target, 
-                'http://paste.pocoo.org/show/%s/ (repasted for %s)' % (
-                    new_paste_id, user))
+        new_paste_id = yield self.paste_proxy.callRemote(
+            'pastes.newPaste', 'python', data)
+        self.msg(target, 
+            'http://paste.pocoo.org/show/%s/ (repasted for %s)' % (
+                new_paste_id, user))
     
     @defer.inlineCallbacks
     def infobat_redent(self, target, paste_target, *text):
