@@ -11,7 +11,7 @@ def interaction(func):
 class InfobatDatabaseRunner(object):
     def __init__(self):
         self.dbpool = adbapi.ConnectionPool(
-            'sqlite3', conf.get('sqlite', 'db_file'))
+            'sqlite3', conf.get('sqlite', 'db_file'), check_same_thread=False)
     
     def close(self):
         self.dbpool.close()

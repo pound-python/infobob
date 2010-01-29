@@ -7,7 +7,7 @@ from infobat.redent import redent
 from infobat.config import conf
 from infobat import amp, chains, database, http
 from datetime import datetime
-from lxml import html
+from lxml import html, etree
 from urllib import urlencode
 from urlparse import urljoin
 import operator
@@ -24,6 +24,7 @@ _lol_messages = [
 _bad_pastebin_regex = re.compile(
     r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|etherpad\.com)/)'
     r'([a-z0-9]+)/?', re.I)
+_textarea_xpath = etree.XPath('//textarea[@name=$name][1]/text()')
 _pastebin_textareas = {
     'pastebin.ca': 'content',
     'pastebin.com': 'code2',
@@ -135,9 +136,7 @@ class InfobatChild(amp.InfobatChildBase):
         else:
             page, _ = yield http.get_page(full_url)
             tree = html.document_fromstring(page)
-            textareas = tree.xpath(
-                '//textarea[@name="%s"]' % _pastebin_textareas[which_bin])
-            data = textareas[0].text
+            data, = _textarea_xpath(tree, name=_pastebin_textareas[which_bin])
         new_paste_id = yield self.paste_proxy.callRemote(
             'pastes.newPaste', 'python', data)
         self.msg(target, 
