@@ -29,3 +29,22 @@ class InfobatDatabaseRunner(object):
                    AND time_of >= ?
         """, (nick, time.time() - 120))
         return txn.fetchall()[0][0]
+    
+    @interaction
+    def get_repaste(self, txn, orig_url):
+        txn.execute("""
+            SELECT repasted_url
+            FROM   repastes
+            WHERE  orig_url = ?
+        """, (orig_url,))
+        row = txn.fetchall()
+        if row:
+            return row[0][0].encode()
+        return None
+    
+    @interaction
+    def add_repaste(self, txn, orig_url, repasted_url):
+        txn.execute("""
+            REPLACE INTO repastes
+            VALUES     (?, ?)
+        """, (orig_url, repasted_url))

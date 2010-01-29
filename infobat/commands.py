@@ -129,19 +129,22 @@ class InfobatChild(amp.InfobatChildBase):
     def repaste(self, target, user, base, which_bin, paste_id, full_url):
         self.notice(user, 'in the future, please use a less awful pastebin '
             '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
-        if which_bin == 'etherpad.com':
-            data, _ = yield http.get_page((
-                'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
-            ) % paste_id)
-        else:
-            page, _ = yield http.get_page(full_url)
-            tree = html.document_fromstring(page)
-            data, = _textarea_xpath(tree, name=_pastebin_textareas[which_bin])
-        new_paste_id = yield self.paste_proxy.callRemote(
-            'pastes.newPaste', 'python', data)
-        self.msg(target, 
-            'http://paste.pocoo.org/show/%s/ (repasted for %s)' % (
-                new_paste_id, user))
+        repasted_url = yield self.dbpool.get_repaste(full_url)
+        if repasted_url is None:
+            if which_bin == 'etherpad.com':
+                data, _ = yield http.get_page((
+                    'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
+                ) % paste_id)
+            else:
+                page, _ = yield http.get_page(full_url)
+                tree = html.document_fromstring(page)
+                data, = _textarea_xpath(tree, 
+                    name=_pastebin_textareas[which_bin])
+            new_paste_id = yield self.paste_proxy.callRemote(
+                'pastes.newPaste', 'python', str(data))
+            repasted_url = 'http://paste.pocoo.org/show/%s/' % new_paste_id
+            yield self.dbpool.add_repaste(full_url, repasted_url)
+        self.msg(target, '%s (repasted for %s)' % (repasted_url, user))
     
     @defer.inlineCallbacks
     def infobat_redent(self, target, paste_target, *text):

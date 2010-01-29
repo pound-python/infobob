@@ -3,3 +3,8 @@ CREATE TABLE IF NOT EXISTS lol_offenses (
     time_of INTEGER NOT NULL,
     PRIMARY KEY(username, time_of)
 );
+
+CREATE TABLE IF NOT EXISTS repastes (
+    orig_url TEXT PRIMARY KEY,
+    repasted_url TEXT
+);
