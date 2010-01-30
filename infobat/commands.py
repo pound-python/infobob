@@ -29,6 +29,13 @@ _pastebin_textareas = {
     'pastebin.ca': 'content',
     'pastebin.com': 'code2',
     'pastebin.org': 'code2'}
+good_pastebins = [
+    'http://paste.pocoo.org',
+    'http://bpaste.net',
+]
+
+class CouldNotPastebinError(Exception):
+    pass
 
 class InfobatChild(amp.InfobatChildBase):
     db = dbpool = None
@@ -36,7 +43,6 @@ class InfobatChild(amp.InfobatChildBase):
     def __init__(self):
         amp.InfobatChildBase.__init__(self)
         self.dbpool = database.InfobatDatabaseRunner()
-        self.paste_proxy = xmlrpc.Proxy('http://paste.pocoo.org/xmlrpc/')
         self._load_database()
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
@@ -126,6 +132,20 @@ class InfobatChild(amp.InfobatChildBase):
         self.notice(nick, _lol_messages[message_idx])
     
     @defer.inlineCallbacks
+    def pastebin(self, language, data):
+        for url in good_pastebins:
+            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
+            try:
+                new_paste_id = yield proxy.callRemote(
+                    'pastes.newPaste', language, data)
+            except:
+                log.err()
+                continue
+            else:
+                defer.returnValue('%s/show/%s/' % (url, new_paste_id))
+        raise CouldNotPastebinError()
+    
+    @defer.inlineCallbacks
     def repaste(self, target, user, base, which_bin, paste_id, full_url):
         self.notice(user, 'in the future, please use a less awful pastebin '
             '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
@@ -140,9 +160,7 @@ class InfobatChild(amp.InfobatChildBase):
                 tree = html.document_fromstring(page)
                 data, = _textarea_xpath(tree, 
                     name=_pastebin_textareas[which_bin])
-            new_paste_id = yield self.paste_proxy.callRemote(
-                'pastes.newPaste', 'python', str(data))
-            repasted_url = 'http://paste.pocoo.org/show/%s/' % new_paste_id
+            repasted_url = yield self.pastebin('python', data.encode('utf8'))
             yield self.dbpool.add_repaste(full_url, repasted_url)
         self.msg(target, '%s (repasted for %s)' % (repasted_url, user))
     
@@ -151,14 +169,12 @@ class InfobatChild(amp.InfobatChildBase):
         redented = (
             redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
         try:
-            paste_id = yield self.paste_proxy.callRemote(
-                'pastes.newPaste', 'python', redented)
+            paste_url = yield self.pastebin('python', redented)
         except:
             self.msg(target, 'Error: %r' % sys.exc_info()[1])
             raise
         else:
-            self.msg(target, '%s, http://paste.pocoo.org/show/%s/' % (
-                paste_target, paste_id))
+            self.msg(target, '%s, %s' % (paste_target, paste_url))
     
     @defer.inlineCallbacks
     def infobat_codepad(self, target, paste_target, *text):
