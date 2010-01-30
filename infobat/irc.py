@@ -22,6 +22,7 @@ class Infobat(irc.IRCClient):
         self.nickname = conf.get('irc', 'nickname')
     
     def signedOn(self):
+        self.factory.resetDelay()
         self.pool = ProcessPool(
             starter=amp.InfobatChildStarter(
                 irc=self, 
