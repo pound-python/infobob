@@ -18,17 +18,17 @@ import re
 
 _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
-    '#python is a no-LOL zone.', 
-    'i mean it: no LOL in #python.', 
+    '#python is a no-LOL zone.',
+    'i mean it: no LOL in #python.',
     'seriously, dude, no LOL in #python.']
 _bad_pastebin_regex = re.compile(
-    r'((https?://)?([a-z0-9-]+\.)*(pastebin\.(com|org|ca)|etherpad\.com)/)'
+    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)|etherpad\.com)/)'
     r'([a-z0-9]+)/?', re.I)
-_textarea_xpath = etree.XPath('//textarea[@name=$name][1]/text()')
-_pastebin_textareas = {
-    'pastebin.ca': 'content',
-    'pastebin.com': 'code2',
-    'pastebin.org': 'code2'}
+_pastebin_raw = {
+    'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
+    'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
+    'pastebin.ca': 'http://%spastebin.ca/raw/%s',
+    'etherpad.com': 'http://%setherpad.com/ep/pad/export/%s/latest?format=txt'}
 good_pastebins = [
     'http://paste.pocoo.org',
     'http://bpaste.net',
@@ -39,7 +39,7 @@ class CouldNotPastebinError(Exception):
 
 class InfobatChild(amp.InfobatChildBase):
     db = dbpool = None
-    
+
     def __init__(self):
         amp.InfobatChildBase.__init__(self)
         self.dbpool = database.InfobatDatabaseRunner()
@@ -47,36 +47,36 @@ class InfobatChild(amp.InfobatChildBase):
         self.looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
         self.looper.start(30)
-    
+
     def connectionLost(self, reason):
         if self.db:
             self.db.sync()
         if self.dbpool:
             self.dbpool.close()
         amp.InfobatChildBase.connectionLost(self, reason)
-    
+
     def _load_database(self):
         self.db = chains.Database(conf.get('database', 'db_file'))
-    
+
     def _sync_countdown(self):
-        if self.db is None: 
+        if self.db is None:
             return
         self.countdown -= 1
         if self.countdown == 0:
             self.db.sync()
             self.countdown = self.max_countdown
-    
+
     def learn(self, string, action=False):
-        if self.db is None: 
+        if self.db is None:
             return
         self.db.learn(string, action)
-    
+
     def action(self, user, channel, message):
-        if not user: 
+        if not user:
             return
         if channel != self.nickname:
             self.learn(message, True)
-    
+
     def privmsg(self, user, channel, message):
         if not user: return
         user = user.split('!', 1)[0]
@@ -86,23 +86,20 @@ class InfobatChild(amp.InfobatChildBase):
             target = user
         else:
             target = channel
-       
-        if channel == '#python':
+
+        if channel in ('#python',):
             if message.startswith('!') and message.lstrip('!'):
                 self.notice(user, 'no triggers in %s.' % channel)
             elif _lol_regex.search(message):
                 self.do_lol(user)
             else:
-                m = _bad_pastebin_regex.search(message)
-                if m:
-                    base, _, _, which_bin, _, paste_id = m.groups()
-                    full_url = m.group(0)
-                    self.repaste(
-                        target, user, base, which_bin, paste_id, full_url)
-        
+                to_repaste = set(_bad_pastebin_regex.findall(message))
+                if to_repaste:
+                    self.repaste(target, user, to_repaste)
+
         if channel != self.nickname:
             self.learn(message)
-        
+
         m = re.match(
             r'^s*%s\s*[,:> ]+(\S?.*?)[.!?]?\s*$' % self.nickname, message, re.I)
         if m:
@@ -124,13 +121,13 @@ class InfobatChild(amp.InfobatChildBase):
                 if channel != self.nickname:
                     result = user + ', ' + result
                 self.msg(target, result)
-    
+
     @defer.inlineCallbacks
     def do_lol(self, nick):
         offenses = yield self.dbpool.add_lol(nick)
         message_idx = min(offenses, len(_lol_messages)) - 1
         self.notice(nick, _lol_messages[message_idx])
-    
+
     @defer.inlineCallbacks
     def pastebin(self, language, data):
         for url in good_pastebins:
@@ -144,26 +141,30 @@ class InfobatChild(amp.InfobatChildBase):
             else:
                 defer.returnValue('%s/show/%s/' % (url, new_paste_id))
         raise CouldNotPastebinError()
-    
+
     @defer.inlineCallbacks
-    def repaste(self, target, user, base, which_bin, paste_id, full_url):
+    def repaste(self, target, user, pastes):
+        which_bin = ', '.join(set(bin for _, _, bin, _ in pastes))
         self.notice(user, 'in the future, please use a less awful pastebin '
             '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
-        repasted_url = yield self.dbpool.get_repaste(full_url)
+        urls = '|'.join(sorted(base + p_id for base, _, _, p_id in pastes))
+        repasted_url = yield self.dbpool.get_repaste(urls)
         if repasted_url is None:
-            if which_bin == 'etherpad.com':
-                data, _ = yield http.get_page((
-                    'http://etherpad.com/ep/pad/export/%s/latest?format=txt'
-                ) % paste_id)
+            defs = [http.get_page(_pastebin_raw.get(bin) % (prefix, paste_id))
+                    for _, prefix, bin, paste_id in pastes]
+            pastes_data = yield defer.gatherResults(defs)
+            if len(pastes_data) == 1:
+                data = pastes_data[0][0]
+                language = 'python'
             else:
-                page, _ = yield http.get_page(full_url)
-                tree = html.document_fromstring(page)
-                data, = _textarea_xpath(tree, 
-                    name=_pastebin_textareas[which_bin])
-            repasted_url = yield self.pastebin('python', data.encode('utf8'))
-            yield self.dbpool.add_repaste(full_url, repasted_url)
+                data = u'\n'.join(u'### %s.py\n%s' % (paste_id, paste)
+                                  for (_, _, _, paste_id), (paste, _)
+                                  in zip(pastes, pastes_data))
+                language = 'multi'
+            repasted_url = yield self.pastebin(language, data.encode('utf8'))
+            yield self.dbpool.add_repaste(urls, repasted_url)
         self.msg(target, '%s (repasted for %s)' % (repasted_url, user))
-    
+
     @defer.inlineCallbacks
     def infobat_redent(self, target, paste_target, *text):
         redented = (
@@ -175,7 +176,7 @@ class InfobatChild(amp.InfobatChildBase):
             raise
         else:
             self.msg(target, '%s, %s' % (paste_target, paste_url))
-    
+
     @defer.inlineCallbacks
     def infobat_codepad(self, target, paste_target, *text):
         redented = (
@@ -184,7 +185,7 @@ class InfobatChild(amp.InfobatChildBase):
             code=redented, lang='Python', submit='Submit', run='True'))
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         try:
-            _, fac = yield http.get_page('http://codepad.org/', 
+            _, fac = yield http.get_page('http://codepad.org/',
                 method='POST', postdata=post_data, headers=headers)
         except:
             self.msg(target, 'Error: %r' % sys.exc_info()[1])
@@ -193,14 +194,14 @@ class InfobatChild(amp.InfobatChildBase):
             paste_url = urljoin(
                 'http://codepad.org/', fac.response_headers['location'][0])
             self.msg(target, '%s, %s' % (paste_target, paste_url))
-    
+
     def infobat_sync(self, target):
-        if self.db is not None: 
+        if self.db is not None:
             self.db.sync()
             self.msg(target, 'Done.')
         else:
             self.msg(target, 'Database not loaded.')
-    
+
     def infobat_unlock(self, target):
         if self.db is not None:
             self.looper.stop()
@@ -210,7 +211,7 @@ class InfobatChild(amp.InfobatChildBase):
             self.msg(target, 'Database unlocked.')
         else:
             self.msg(target, 'Database was unlocked.')
-    
+
     def infobat_lock(self, target):
         if self.db is None:
             self._load_database()
@@ -218,7 +219,7 @@ class InfobatChild(amp.InfobatChildBase):
             self.msg(target, 'Database locked.')
         else:
             self.msg(target, 'Database was unlocked.')
-    
+
     def infobat_stats(self, target):
         if self.db is None: return
         delta = datetime.now() - self.parent_start
@@ -246,7 +247,7 @@ class InfobatChild(amp.InfobatChildBase):
                 self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
-    
+
     def infobat_divine(self, target, *seed):
         self.me(target, 'shakes the psychic black sphere.')
         r = random.Random(''.join(seed) + datetime.now().isoformat())
@@ -255,7 +256,7 @@ class InfobatChild(amp.InfobatChildBase):
         st.close()
         l = r.choice(l).strip()
         self.msg(target, 'It says: "%s"' % l)
-    
+
     def infobat_probability(self, target, *sentence):
         if self.db is None: return
         sentence = ' '.join(sentence)
@@ -284,20 +285,20 @@ class InfobatChild(amp.InfobatChildBase):
                 probabilities.append(0)
         tot_probability = reduce(operator.mul, probabilities)
         average = sum(probabilities) / len(probabilities)
-        std_dev = (sum((i - average) ** 2 for i in probabilities) / 
+        std_dev = (sum((i - average) ** 2 for i in probabilities) /
             len(probabilities)) ** .5
         try:
             inverse = '%.0f' % (1 / tot_probability)
         except (OverflowError, ZeroDivisionError):
             inverse = 'inf'
-        self.msg(target, 
+        self.msg(target,
             '%0.6f%% chance (1 in %s) across %d probabilities; '
             '%0.6f%% average, standard deviation %0.6f%%, '
             '%0.6f%% low, %0.6f%% high.' % (
-                tot_probability * 100, inverse, 
-                len(probabilities), 
+                tot_probability * 100, inverse,
+                len(probabilities),
                 average * 100, std_dev * 100,
                 min(probabilities) * 100, max(probabilities) * 100))
-    
+
     def infobat_reload(self, target):
         self.callRemote(amp.ShutdownRequest, requester=target)
