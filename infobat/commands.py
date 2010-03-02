@@ -68,7 +68,10 @@ class InfobatChild(amp.InfobatChildBase):
         def _eb(_):
             return None, None
         def _cb((latency, _), name):
-            return self.dbpool.set_latency(name, latency)
+            return defer.DeferredList([
+                self.dbpool.record_is_up(name, bool(latency)),
+                self.dbpool.set_latency(name, latency),
+            ])
         def do_ping((name, url)):
             proxy = xmlrpc.Proxy(url + '/xmlrpc/')
             d = proxy.callRemote('pastes.getLanguages')
@@ -151,8 +154,10 @@ class InfobatChild(amp.InfobatChildBase):
             except:
                 log.err()
                 yield self.dbpool.set_latency(name, None)
+                yield self.dbpool.record_is_up(name, False)
                 continue
             else:
+                yield self.dbpool.record_is_up(name, True)
                 defer.returnValue('%s/show/%s/' % (url, new_paste_id))
         raise CouldNotPastebinError()
 

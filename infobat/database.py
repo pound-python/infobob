@@ -52,14 +52,11 @@ class InfobatDatabaseRunner(object):
     @interaction
     def get_pastebins(self, txn):
         txn.execute("""
-            SELECT   name,
-                     service_url, 
-                     latency * latency_multiplier AS rank 
-            FROM     pastebins 
-            WHERE    latency IS NOT NULL 
+            SELECT   name, service_url 
+            FROM     pastebin_ranks 
             ORDER BY rank ASC
         """)
-        return [(name, url.encode()) for name, url, rank in txn]
+        return [(name, url.encode()) for name, url in txn]
     
     @interaction
     def get_all_pastebins(self, txn):
@@ -77,3 +74,10 @@ class InfobatDatabaseRunner(object):
             WHERE  name = ? 
         """, (latency, name))
         return bool(txn.rowcount)
+    
+    @interaction
+    def record_is_up(self, txn, name, is_up):
+        txn.execute("""
+            INSERT INTO pastebin_reliability 
+            VALUES     (?, ?, ?)
+        """, (name, time.time(), is_up))
