@@ -48,3 +48,32 @@ class InfobatDatabaseRunner(object):
             REPLACE INTO repastes
             VALUES     (?, ?)
         """, (orig_url, repasted_url))
+    
+    @interaction
+    def get_pastebins(self, txn):
+        txn.execute("""
+            SELECT   name,
+                     service_url, 
+                     latency * latency_multiplier AS rank 
+            FROM     pastebins 
+            WHERE    latency IS NOT NULL 
+            ORDER BY rank ASC
+        """)
+        return [(name, url.encode()) for name, url, rank in txn]
+    
+    @interaction
+    def get_all_pastebins(self, txn):
+        txn.execute("""
+            SELECT name, service_url 
+            FROM   pastebins
+        """)
+        return [(name, url.encode()) for name, url in txn]
+    
+    @interaction
+    def set_latency(self, txn, name, latency):
+        txn.execute("""
+            UPDATE pastebins 
+            SET    latency = ? 
+            WHERE  name = ? 
+        """, (latency, name))
+        return bool(txn.rowcount)

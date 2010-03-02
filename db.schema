@@ -8,3 +8,10 @@ CREATE TABLE IF NOT EXISTS repastes (
     orig_url TEXT PRIMARY KEY,
     repasted_url TEXT
 );
+
+CREATE TABLE IF NOT EXISTS pastebins (
+    name TEXT PRIMARY KEY,
+    service_url TEXT NOT NULL,
+    latency REAL,
+    latency_multiplier REAL DEFAULT 1
+);

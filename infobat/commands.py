@@ -5,7 +5,7 @@ from twisted.python import log, reflect
 from twisted.web import xmlrpc
 from infobat.redent import redent
 from infobat.config import conf
-from infobat import amp, chains, database, http
+from infobat import amp, chains, database, http, util
 from datetime import datetime
 from urllib import urlencode
 from urlparse import urljoin
@@ -28,10 +28,6 @@ _pastebin_raw = {
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
     'etherpad.com': 'http://%setherpad.com/ep/pad/export/%s/latest?format=txt'}
-good_pastebins = [
-    'http://paste.pocoo.org',
-    'http://bpaste.net',
-]
 
 class CouldNotPastebinError(Exception):
     pass
@@ -43,9 +39,11 @@ class InfobatChild(amp.InfobatChildBase):
         amp.InfobatChildBase.__init__(self)
         self.dbpool = database.InfobatDatabaseRunner()
         self._load_database()
-        self.looper = task.LoopingCall(self._sync_countdown)
+        self.sync_looper = task.LoopingCall(self._sync_countdown)
         self.countdown = self.max_countdown
-        self.looper.start(30)
+        self.sync_looper.start(30)
+        self.ping_looper = task.LoopingCall(self._ping_pastebins)
+        self.ping_looper.start(60*60*3)
 
     def connectionLost(self, reason):
         if self.db:
@@ -64,6 +62,22 @@ class InfobatChild(amp.InfobatChildBase):
         if self.countdown == 0:
             self.db.sync()
             self.countdown = self.max_countdown
+
+    @defer.inlineCallbacks
+    def _ping_pastebins(self):
+        def _eb(_):
+            return None, None
+        def _cb((latency, _), name):
+            return self.dbpool.set_latency(name, latency)
+        def do_ping((name, url)):
+            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
+            d = proxy.callRemote('pastes.getLanguages')
+            util.time_deferred(d)
+            d.addErrback(_eb)
+            d.addCallback(_cb, name)
+            return d
+        pastebins = yield self.dbpool.get_all_pastebins()
+        yield util.parallel(pastebins, 10, do_ping)
 
     def learn(self, string, action=False):
         if self.db is None:
@@ -129,13 +143,14 @@ class InfobatChild(amp.InfobatChildBase):
 
     @defer.inlineCallbacks
     def pastebin(self, language, data):
-        for url in good_pastebins:
+        for name, url in (yield self.dbpool.get_pastebins()):
             proxy = xmlrpc.Proxy(url + '/xmlrpc/')
             try:
                 new_paste_id = yield proxy.callRemote(
                     'pastes.newPaste', language, data)
             except:
                 log.err()
+                yield self.dbpool.set_latency(name, None)
                 continue
             else:
                 defer.returnValue('%s/show/%s/' % (url, new_paste_id))
@@ -149,7 +164,7 @@ class InfobatChild(amp.InfobatChildBase):
         urls = '|'.join(sorted(base + p_id for base, _, _, p_id in pastes))
         repasted_url = yield self.dbpool.get_repaste(urls)
         if repasted_url is None:
-            defs = [http.get_page(_pastebin_raw.get(bin) % (prefix, paste_id))
+            defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
                 for _, prefix, bin, paste_id in pastes]
             pastes_data = yield defer.gatherResults(defs)
             if len(pastes_data) == 1:
@@ -203,7 +218,7 @@ class InfobatChild(amp.InfobatChildBase):
 
     def infobat_unlock(self, target):
         if self.db is not None:
-            self.looper.stop()
+            self.sync_looper.stop()
             self.db.sync()
             self.db.close()
             self.db = None
@@ -214,7 +229,7 @@ class InfobatChild(amp.InfobatChildBase):
     def infobat_lock(self, target):
         if self.db is None:
             self._load_database()
-            self.looper.start(30)
+            self.sync_looper.start(30)
             self.msg(target, 'Database locked.')
         else:
             self.msg(target, 'Database was unlocked.')
