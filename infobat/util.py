@@ -1,6 +1,8 @@
 from twisted.internet import defer, task
 import time
 
+ISOFORMAT = '%Y-%m-%dT%H:%M:%S'
+
 def parallel(iterable, count, f, *args, **named):
     coop = task.Cooperator()
     work = (f(elem, *args, **named) for elem in iterable)

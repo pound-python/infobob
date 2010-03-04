@@ -32,8 +32,8 @@ CREATE VIEW IF NOT EXISTS pastebin_reliability_percentage AS
 CREATE VIEW IF NOT EXISTS pastebin_ranks AS 
     SELECT pastebins.name, 
            service_url, 
-           latency * latency_multiplier * 
-             reliability * reliability * reliability AS rank 
+           latency * latency_multiplier / 
+             (reliability * reliability * reliability) AS rank 
     FROM   pastebins 
            JOIN pastebin_reliability_percentage 
              ON pastebins.name = pastebin_reliability_percentage.name 
