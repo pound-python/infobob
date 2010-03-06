@@ -34,8 +34,8 @@ class CouldNotPastebinError(Exception):
     pass
 
 class Infobat(ampirc.IrcChildBase):
+    datastore_properties = ['is_opped', 'outstandingPings', 'identified']
     identified = False
-    pool = None
     outstandingPings = 0
 
     sourceURL = 'https://code.launchpad.net/~pound-python/infobat/infobob'
@@ -54,6 +54,8 @@ class Infobat(ampirc.IrcChildBase):
         self.countdown = self.max_countdown
         self.startTimer('dbsync', 30)
         self.startTimer('pastebinPing', 60*60*3)
+        self.is_opped = set()
+        self._op_deferreds = {}
 
     def signedOn(self):
         nickserv_pw = conf.get('irc', 'nickserv_pw')
@@ -62,6 +64,15 @@ class Infobat(ampirc.IrcChildBase):
         else:
             self.join(conf.get('irc', 'channels'))
         self.startTimer('serverPing', 60)
+
+    def protocolReady(self):
+        self._op_deferreds = dict.fromkeys(self.is_opped, defer.succeed(None))
+
+    def ensureOps(self, channel):
+        if self._op_deferreds.get(channel) is None:
+            self._op_deferreds[channel] = defer.Deferred()
+            self.msg('ChanServ', 'op %s' % channel)
+        return self._op_deferreds[channel]
 
     def ampircTimer_serverPing(self):
         if self.outstandingPings > 5:
@@ -181,6 +192,45 @@ class Infobat(ampirc.IrcChildBase):
                 if channel != self.nickname:
                     result = user + ', ' + result
                 self.msg(target, result)
+
+    # Thanks for nothing, twisted. modeChanged sucks so hard.
+    def irc_MODE(self, prefix, params):
+        user, channel, modes, args = prefix, params[0], params[1], params[2:]
+        setting = True
+        for c in modes:
+            if c == '+':
+                setting = True
+            elif c == '-':
+                setting = False
+            else:
+                arg = None
+                if self._modeAcceptsArg.get(c, (False, False))[not setting]:
+                    arg = args.pop(0)
+                self.modeChanged(user, channel, setting, c, arg)
+        if args:
+            log.msg('Too many args (%s) received for %s. If one or more '
+                'modes are supposed to accept an arg and they are not in '
+                '_modeAcceptsArg, add them.' % (' '.join(args), modes))
+
+    def modeChanged(self, user, channel, set, mode, arg):
+        if mode == 'o' and arg == self.nickname:
+            was_opped = channel in self.is_opped
+            is_opped = set
+            if is_opped and not was_opped:
+                self.is_opped.add(channel)
+                self._op_deferreds.setdefault(channel, defer.Deferred()
+                    ).callback(None)
+                self.startTimer('deopSelf', 60*5, alsoRunImmediately=False)
+            elif not is_opped and was_opped:
+                self.is_opped.remove(channel)
+                self._op_deferreds.pop(channel, None)
+                self.stopTimer('deopSelf')
+            # XXX: Ugly hack since is_opped is mutable.
+            self.is_opped = self.is_opped
+
+    def ampircTimer_deopSelf(self):
+        for channel in self.is_opped:
+            self.mode(channel, False, 'o', user=self.nickname)
 
     @defer.inlineCallbacks
     def do_lol(self, nick):
