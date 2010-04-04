@@ -34,7 +34,9 @@ class CouldNotPastebinError(Exception):
     pass
 
 class Infobat(ampirc.IrcChildBase):
-    datastore_properties = ['is_opped', 'outstandingPings', 'identified']
+    datastore_properties = [
+        'is_opped', 'outstandingPings', 'identified', 'countdown'
+    ]
     identified = False
     outstandingPings = 0
 
@@ -51,9 +53,6 @@ class Infobat(ampirc.IrcChildBase):
         self.max_countdown = conf.getint('database', 'sync_time')
         self.dbpool = database.InfobatDatabaseRunner()
         self._load_database()
-        self.countdown = self.max_countdown
-        self.startTimer('dbsync', 30)
-        self.startTimer('pastebinPing', 60*60*3)
         self.is_opped = set()
         self._op_deferreds = {}
 
@@ -65,8 +64,12 @@ class Infobat(ampirc.IrcChildBase):
             self.join(conf.get('irc', 'channels'))
         self.startTimer('serverPing', 60)
 
-    def protocolReady(self):
+    def protocolReady(self, first_time=False):
         self._op_deferreds = dict.fromkeys(self.is_opped, defer.succeed(None))
+        if first_time:
+            self.startTimer('dbsync', 30)
+            self.startTimer('pastebinPing', 60*60*3)
+            self.countdown = self.max_countdown
 
     def ensureOps(self, channel):
         if self._op_deferreds.get(channel) is None:
