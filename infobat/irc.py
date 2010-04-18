@@ -79,7 +79,7 @@ class Infobat(ampirc.IrcChildBase):
 
     def ampircTimer_serverPing(self):
         if self.outstandingPings > 5:
-            self.transport.loseConnection()
+            self.loseConnection()
         self.sendLine('PING bollocks')
         self.outstandingPings += 1
 
