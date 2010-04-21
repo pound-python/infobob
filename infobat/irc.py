@@ -139,7 +139,37 @@ class Infobat(ampirc.IrcChildBase):
     def learn(self, string, action=False):
         if self.db is None:
             return
-        self.db.learn(string, action)
+        self.db.learn(self.sanitize_learn_input(string), action)
+
+    def sanitize_learn_input(self, string, channel):
+        """Remove extraneous/irrelevant data from input to markov chain
+        
+        - remove nickname prefixes: "nick: foo bar" -> "foo bar"
+        
+        """
+        # channel is included for future use, e.g. in checking the channel
+        # username list
+        
+        # doing more is a good idea?
+        
+        # TODO: use real usernames from the nick list
+        # idea: handle "nick1, nick2: thanks!"
+        # idea: handle obviously technical data like URIs. Too hard? heheh.
+        
+        nick_regex = (r'(?P<nick>[A-Za-z\x5b-\x60\x7b-\x7d]'
+            r'[0-9A-Za-z\x5b-\x60\x7b-\x7d\-]*)') # RFC2812 2.3.1 , extended
+        regex = re.compile(nick_regex + '(?P<sep>[:,])\s*(?P<message>.*)')
+        
+        match = regex.match(string)
+        
+        if match is None:
+            sanitized = string
+        else:
+            # in future, do elif to check if the nick group is actually used
+            # in the channel
+            sanitized = match.group('message')
+        
+        return sanitized
 
     def action(self, user, channel, message):
         if not user:
