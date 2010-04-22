@@ -50,19 +50,20 @@ class Infobat(ampirc.IrcChildBase):
 
     def __init__(self, amp, uuid):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
-        self.nickname = conf.get('irc', 'nickname')
-        self.max_countdown = conf.getint('database', 'sync_time')
+        self.nickname = conf['irc.nickname'].encode('utf-8')
+        self.max_countdown = conf['database.dbm.sync_time']
         self.dbpool = database.InfobatDatabaseRunner()
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
 
     def signedOn(self):
-        nickserv_pw = conf.get('irc', 'nickserv_pw')
+        nickserv_pw = conf['irc.nickserv_pw']
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
         else:
-            self.join(conf.get('irc', 'channels'))
+            self.join(u','.join(channel for channel in conf['channels']
+                if channel != u'default').encode('utf-8'))
         self.startTimer('serverPing', 60)
 
     def protocolReady(self, first_time=False):
@@ -108,7 +109,7 @@ class Infobat(ampirc.IrcChildBase):
         amp.InfobatChildBase.connectionLost(self, reason)
 
     def _load_database(self):
-        self.db = chains.Database(conf.get('database', 'db_file'))
+        self.db = chains.Database(conf['database.dbm.db_file'])
 
     def ampircTimer_dbsync(self):
         if self.db is None:
@@ -152,7 +153,8 @@ class Infobat(ampirc.IrcChildBase):
         if (not self.identified and user.lower().startswith('nickserv!') and
                 'identified' in message):
             self.identified = True
-            self.join(conf.get('irc', 'channels'))
+            self.join(u','.join(channel for channel in conf['channels']
+                if channel != u'default').encode('utf-8'))
         if not user: return
         user = user.split('!', 1)[0]
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
@@ -407,7 +409,8 @@ class InfobatAmpIrcChild(ampirc.AmpIrcChild):
     childProtocol = Infobat
 
     def __init__(self, config_loc, start_time):
-        conf.read([config_loc])
+        with open(config_loc) as cfgFile:
+            conf.load(cfgFile)
         self.parent_start = datetime.strptime(start_time, util.ISOFORMAT)
         ampirc.AmpIrcChild.__init__(self)
 

@@ -1,12 +1,40 @@
-[irc]
-nickname:       infobat
-server:         irc.freenode.net
-channels:       #colontea
-nickserv_pw:    -
-
-[database]
-sync_time:      10
-db_file:        infobat.chainsdb
-
-[sqlite]
-db_file:        infobat.sqlite
+{
+    "irc": {
+        "nickname": "infotest",
+        "server": "irc.freenode.net",
+        "nickserv_pw": ""
+    },
+    "database": {
+        "dbm": {
+            "sync_time": 10,
+            "db_file": "infobat.chainsdb"
+        },
+        "sqlite": {
+            "db_file": "infobat.sqlite"
+        }
+    },
+    "channels": {
+        "defaults": {
+            "commands": [
+                ["allow", "all"],                
+                ["deny", "divine", "lol", "repaste"]
+            ],
+            "flood_control": [3, 2]
+        },
+        "#python-offtopic": {
+            "commands": [
+                ["allow", "divine"]
+            ],
+            "flood_control": [5, 5]
+        },
+        "#python": {
+            "commands": [
+                ["deny", "all"],
+                ["allow", "lol", "codepad", "redent", "repaste"]
+            ]
+        },
+        "#example": {
+            "key": "dongs"
+        }
+    }
+}
