@@ -30,6 +30,12 @@ _pastebin_raw = {
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
 }
+_EXEC_PRELUDE = """#coding:utf-8
+import os, sys, math, re, random
+"""
+_MAX_LINES = 9
+
+
 
 class CouldNotPastebinError(Exception):
     pass
