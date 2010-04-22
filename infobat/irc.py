@@ -294,22 +294,56 @@ class Infobat(ampirc.IrcChildBase):
             self.msg(target, '%s, %s' % (paste_target, paste_url))
 
     @defer.inlineCallbacks
-    def infobat_codepad(self, target, paste_target, *text):
-        redented = (
-            redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
-        post_data = urlencode(dict(
-            code=redented, lang='Python', submit='Submit', run='True'))
+    def _codepad(self, code, lang='Python', run=True):
+        redented = redent(code.decode('utf8', 'replace')).encode('utf8')
+        post_data = dict(
+            code=redented, lang='Python', submit='Submit', private='True')
+        if run:
+            post_data['run'] = 'True'
+        post_data = urlencode(post_data)
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        ign, fac = yield http.get_page('http://codepad.org/',
+            method='POST', postdata=post_data, headers=headers)
+        paste_url = urljoin('http://codepad.org/',
+            fac.response_headers['location'][0])
+        defer.returnValue(paste_url)
+
+    @defer.inlineCallbacks
+    def infobat_codepad(self, target, paste_target, *text):
         try:
-            _, fac = yield http.get_page('http://codepad.org/',
-                method='POST', postdata=post_data, headers=headers)
+            paste_url = yield self._codepad(' '.join(text))
         except:
             self.msg(target, 'Error: %r' % sys.exc_info()[1])
             raise
         else:
-            paste_url = urljoin(
-                'http://codepad.org/', fac.response_headers['location'][0])
             self.msg(target, '%s, %s' % (paste_target, paste_url))
+
+    @defer.inlineCallbacks
+    def infobat_exec(self, target, *text):
+        try:
+            paste_url = yield self._codepad(_EXEC_PRELUDE + ' '.join(text))
+            page, ign = yield http.get_page(paste_url)
+        except:
+            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            raise
+        else:
+            doc = lxml.html.fromstring(page.decode('utf8', 'replace'))
+            response = u''.join(doc.xpath("//a[@name='output']"
+                "/following-sibling::div/table/tr/td[2]/div/pre/text()"))
+            response = [line.rstrip()
+                for line in response.encode('utf-8').splitlines()
+                if line.strip()]
+            nlines = len(response)
+            if nlines > _MAX_LINES:
+                starting = _MAX_LINES - 4
+                response[starting:-3] = ['(...%d lines, entire response in '
+                    '%s ...)' % (nlines - (_MAX_LINES - 1), paste_url)]
+            for part in response:
+                self.msg(target, part)
+
+    def infobat_print(self, target, *text):
+        """Alias to print the result, aka eval"""
+        return self.infobat_exec(target, 'print', *text)
 
     def infobat_sync(self, target):
         if self.db is not None:
