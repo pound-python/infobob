@@ -272,11 +272,11 @@ class Infobat(ampirc.IrcChildBase):
                 data = pastes_data[0][0]
                 language = 'python'
             else:
-                data = u'\n'.join(u'### %s.py\n%s' % (paste_id, paste)
+                data = '\n'.join('### %s.py\n%s' % (paste_id, paste)
                     for (_, _, _, paste_id), (paste, _)
                     in zip(pastes, pastes_data))
                 language = 'multi'
-            repasted_url = yield self.pastebin(language, data.encode('utf8'))
+            repasted_url = yield self.pastebin(language, data)
             yield self.dbpool.add_repaste(urls, repasted_url)
         self.msg(target, '%s (repasted for %s)' % (repasted_url, user))
 
