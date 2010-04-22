@@ -22,13 +22,12 @@ _lol_messages = [
     'i mean it: no LOL in #python.',
     'seriously, dude, no LOL in #python.']
 _bad_pastebin_regex = re.compile(
-    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
-    r'|etherpad\.com)/)([a-z0-9]+)/?', re.I)
+    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca))/)'
+    r'([a-z0-9]+)/?', re.I)
 _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
-    'etherpad.com': 'http://%setherpad.com/ep/pad/export/%s/latest?format=txt'}
 
 class CouldNotPastebinError(Exception):
     pass
