@@ -196,40 +196,22 @@ class Infobat(ampirc.IrcChildBase):
                     result = user + ', ' + result
                 self.msg(target, result)
 
-    # Thanks for nothing, twisted. modeChanged sucks so hard.
-    def irc_MODE(self, prefix, params):
-        user, channel, modes, args = prefix, params[0], params[1], params[2:]
-        setting = True
-        for c in modes:
-            if c == '+':
-                setting = True
-            elif c == '-':
-                setting = False
-            else:
-                arg = None
-                if self._modeAcceptsArg.get(c, (False, False))[not setting]:
-                    arg = args.pop(0)
-                self.modeChanged(user, channel, setting, c, arg)
-        if args:
-            log.msg('Too many args (%s) received for %s. If one or more '
-                'modes are supposed to accept an arg and they are not in '
-                '_modeAcceptsArg, add them.' % (' '.join(args), modes))
-
-    def modeChanged(self, user, channel, set, mode, arg):
-        if mode == 'o' and arg == self.nickname:
-            was_opped = channel in self.is_opped
-            is_opped = set
-            if is_opped and not was_opped:
-                self.is_opped.add(channel)
-                self._op_deferreds.setdefault(channel, defer.Deferred()
-                    ).callback(None)
-                self.startTimer('deopSelf', 60*5, alsoRunImmediately=False)
-            elif not is_opped and was_opped:
-                self.is_opped.remove(channel)
-                self._op_deferreds.pop(channel, None)
-                self.stopTimer('deopSelf')
-            # XXX: Ugly hack since is_opped is mutable.
-            self.is_opped = self.is_opped
+    def modeChanged(self, user, channel, set, modes, args):
+        for mode, arg in zip(modes, args):
+            if mode == 'o' and arg == self.nickname:
+                was_opped = channel in self.is_opped
+                is_opped = set
+                if is_opped and not was_opped:
+                    self.is_opped.add(channel)
+                    self._op_deferreds.setdefault(channel, defer.Deferred()
+                        ).callback(None)
+                    self.startTimer('deopSelf', 60*5, alsoRunImmediately=False)
+                elif not is_opped and was_opped:
+                    self.is_opped.remove(channel)
+                    self._op_deferreds.pop(channel, None)
+                    self.stopTimer('deopSelf')
+                # XXX: Ugly hack since is_opped is mutable.
+                self.is_opped = self.is_opped
 
     def ampircTimer_deopSelf(self):
         for channel in self.is_opped:
