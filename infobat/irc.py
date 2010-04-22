@@ -9,7 +9,7 @@ from infobat import chains, database, http, util
 from datetime import datetime
 from urllib import urlencode
 from urlparse import urljoin
-import lxml
+import lxml.html
 import operator
 import ampirc
 import random
