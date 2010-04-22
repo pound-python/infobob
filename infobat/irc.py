@@ -20,7 +20,8 @@ _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
     '#python is a no-LOL zone.',
     'i mean it: no LOL in #python.',
-    'seriously, dude, no LOL in #python.']
+    'seriously, dude, no LOL in #python.',
+]
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca))/)'
     r'([a-z0-9]+)/?', re.I)
@@ -28,6 +29,7 @@ _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
+}
 
 class CouldNotPastebinError(Exception):
     pass
