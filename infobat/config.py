@@ -48,6 +48,10 @@ class _Config(object):
 
     def apply_defaults(self):
         self.setdefault('irc.port', 6667)
+        self.setdefault('misc.magic8_file', None)
+        self.setdefault('misc.manhole.socket_prefix', None)
+        self.setdefault('misc.manhole.passwd_file', None)
+        self.setdefault('channels.defaults', {})
 
     def __getitem__(self, item):
         obj = self.config

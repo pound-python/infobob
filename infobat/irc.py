@@ -15,6 +15,7 @@ import ampirc
 import random
 import time
 import sys
+import os
 import re
 
 _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
@@ -51,7 +52,7 @@ class Infobat(ampirc.IrcChildBase):
     versionNum = 'latest'
     versionEnv = 'twisted'
 
-    db = dbpool = None
+    db = dbpool = manhole_service = None
 
     def __init__(self, amp, uuid):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
@@ -61,6 +62,19 @@ class Infobat(ampirc.IrcChildBase):
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
+        if (conf['misc.manhole.socket_prefix'] is not None
+                and conf['misc.manhole.passwd_file']):
+            from twisted.conch.manhole_tap import makeService
+            self.manhole_service = service = makeService(dict(
+                telnetPort="unix:%s%d.sock" % (
+                    conf['misc.manhole.socket_prefix'], os.getpid()),
+                sshPort=None,
+                namespace={'self': self},
+                passwd=conf['misc.manhole.passwd_file'],
+            ))
+            service.startService()
+            reactor.addSystemEventTrigger(
+                'before', 'shutdown', service.stopService)
 
     def autojoinChannels(self):
         for channel in conf['irc.autojoin']:
