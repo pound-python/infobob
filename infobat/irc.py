@@ -17,7 +17,7 @@ import time
 import sys
 import re
 
-_lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
+_lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
     '%s is a no-LOL zone.',
     'i mean it: no LOL in %s.',
@@ -70,7 +70,7 @@ class Infobat(ampirc.IrcChildBase):
     def signedOn(self):
         nickserv_pw = conf['irc.nickserv_pw']
         if nickserv_pw:
-            self.msg('NickServ', 'identify %s' % nickserv_pw)
+            self.msg('NickServ', 'identify %s' % nickserv_pw.encode())
         else:
             self.autojoinChannels()
         self.startTimer('serverPing', 60)
@@ -152,7 +152,7 @@ class Infobat(ampirc.IrcChildBase):
             return
         self.db.learn(self.sanitize_learn_input(string), action)
 
-    def sanitize_learn_input(self, string, channel):
+    def sanitize_learn_input(self, string):
         """Remove extraneous/irrelevant data from input to markov chain
         
         - remove nickname prefixes: "nick: foo bar" -> "foo bar"
@@ -423,9 +423,13 @@ class Infobat(ampirc.IrcChildBase):
         self.msg(target, result)
 
     def infobat_divine(self, target, *seed):
+        fortunes = conf['misc.magic8_file']
+        if not fortunes:
+            log.msg('no magic8 file')
+            return
         self.me(target, 'shakes the psychic black sphere.')
         r = random.Random(''.join(seed) + datetime.now().isoformat())
-        st = open('magic8.txt')
+        st = open(fortunes.encode())
         l = st.readlines()
         st.close()
         l = r.choice(l).strip()
