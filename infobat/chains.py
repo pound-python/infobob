@@ -6,11 +6,18 @@ ORDER = 8
 FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
 
-_chain_struct = struct.Struct('>128I')
+def forceUnicode(bytestring):
+    try:
+        obj = bytestring.decode('utf-8')
+    except UnicodeDecodeError:
+        obj = bytestring.decode('latin1')
+    return obj
+
+_chain_struct = struct.Struct('>256I')
 class Chain(object):
     def __init__(self, data=None):
         if data is None:
-            self.data = [0] * 128
+            self.data = [0] * 256
         else:
             self.data = list(_chain_struct.unpack(data))
     
@@ -128,10 +135,9 @@ class Database(object):
         if string.startswith('*'):
             action = True
             string = string.lstrip('*')
+        string = forceUnicode(string).encode('utf-8')
         queue, length = '', 0
         for w in string:
-            if w > '\x7f':
-                continue
             self.wordcount += 1
             if not queue and w == ' ': 
                 continue
