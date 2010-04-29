@@ -18,9 +18,9 @@ import re
 
 _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
-    '#python is a no-LOL zone.',
-    'i mean it: no LOL in #python.',
-    'seriously, dude, no LOL in #python.',
+    '%s is a no-LOL zone.',
+    'i mean it: no LOL in %s.',
+    'seriously, dude, no LOL in %s.',
 ]
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca))/)'
@@ -50,20 +50,24 @@ class Infobat(ampirc.IrcChildBase):
 
     def __init__(self, amp, uuid):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
-        self.nickname = conf['irc.nickname'].encode('utf-8')
+        self.nickname = conf['irc.nickname'].encode()
         self.max_countdown = conf['database.dbm.sync_time']
         self.dbpool = database.InfobatDatabaseRunner()
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
 
+    def autojoinChannels(self):
+        for channel in conf['irc.autojoin']:
+            channel_obj = conf.channel(channel)
+            self.join(channel_obj.name.encode(), channel_obj.key)
+
     def signedOn(self):
         nickserv_pw = conf['irc.nickserv_pw']
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
         else:
-            self.join(u','.join(channel for channel in conf['channels']
-                if channel != u'default').encode('utf-8'))
+            self.autojoinChannels()
         self.startTimer('serverPing', 60)
 
     def protocolReady(self, first_time=False):
@@ -109,7 +113,7 @@ class Infobat(ampirc.IrcChildBase):
         amp.InfobatChildBase.connectionLost(self, reason)
 
     def _load_database(self):
-        self.db = chains.Database(conf['database.dbm.db_file'])
+        self.db = chains.Database(conf['database.dbm.db_file'].encode())
 
     def ampircTimer_dbsync(self):
         if self.db is None:
@@ -153,28 +157,29 @@ class Infobat(ampirc.IrcChildBase):
         if (not self.identified and user.lower().startswith('nickserv!') and
                 'identified' in message):
             self.identified = True
-            self.join(u','.join(channel for channel in conf['channels']
-                if channel != u'default').encode('utf-8'))
+            self.autojoinChannels()
         if not user: return
         user = user.split('!', 1)[0]
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
         if channel == self.nickname:
             log.msg('privmsg from %s: %s' % (user, message))
             target = user
+            channel_obj = conf.channel('privmsg')
         else:
             target = channel
+            channel_obj = conf.channel(channel)
 
-        if channel in ('#python',):
-            if message.startswith('!') and message.lstrip('!'):
-                self.notice(user, 'no triggers in %s.' % channel)
-            elif _lol_regex.search(message):
-                self.do_lol(user)
-            else:
-                to_repaste = set(_bad_pastebin_regex.findall(message))
-                if to_repaste:
-                    self.repaste(target, user, to_repaste)
+        if channel_obj.is_usable('anti_trigger') and (
+                message.startswith('!') and message.lstrip('!')):
+            self.notice(user, 'no triggers in %s.' % channel)
+        if channel_obj.is_usable('lol') and _lol_regex.search(message):
+            self.do_lol(user, channel)
+        if channel_obj.is_usable('repaste'):
+            to_repaste = set(_bad_pastebin_regex.findall(message))
+            if to_repaste:
+                self.repaste(target, user, to_repaste)
 
-        if channel != self.nickname:
+        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
             self.learn(message)
 
         m = re.match(
@@ -187,10 +192,9 @@ class Infobat(ampirc.IrcChildBase):
             return
         s_command = command.split(' ')
         command_func = getattr(self, 'infobat_' + s_command[0], None)
-        if command_func is not None:
+        if command_func is not None and channel_obj.is_usable(s_command[0]):
             command_func(target, *s_command[1:])
-        elif self.db and (channel in (
-                self.nickname, '#python-offtopic', '#infobob')):
+        elif self.db and channel_obj.is_usable('chain_splice'):
             action, result = self.db.splice()
             if action:
                 self.me(target, result)
@@ -221,10 +225,10 @@ class Infobat(ampirc.IrcChildBase):
             self.mode(channel, False, 'o', user=self.nickname)
 
     @defer.inlineCallbacks
-    def do_lol(self, nick):
+    def do_lol(self, nick, channel):
         offenses = yield self.dbpool.add_lol(nick)
         message_idx = min(offenses, len(_lol_messages)) - 1
-        self.notice(nick, _lol_messages[message_idx])
+        self.notice(nick, _lol_messages[message_idx] % channel)
 
     @defer.inlineCallbacks
     def pastebin(self, language, data):

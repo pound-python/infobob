@@ -2,7 +2,8 @@
     "irc": {
         "nickname": "infotest",
         "server": "irc.freenode.net",
-        "nickserv_pw": ""
+        "nickserv_pw": null,
+        "autojoin": ["#python", "#python-offtopic"]
     },
     "database": {
         "dbm": {
@@ -31,7 +32,8 @@
             "commands": [
                 ["deny", "all"],
                 ["allow", "lol", "codepad", "redent", "repaste"]
-            ]
+            ],
+            "have_ops": true
         },
         "#example": {
             "key": "dongs"
