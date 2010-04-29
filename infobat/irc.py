@@ -165,7 +165,7 @@ class Infobat(ampirc.IrcChildBase):
         if self.db is None:
             return
         self.db.learn(self.sanitize_learn_input(string), action)
-
+       
     def sanitize_learn_input(self, string):
         """Remove extraneous/irrelevant data from input to markov chain
         
@@ -203,6 +203,7 @@ class Infobat(ampirc.IrcChildBase):
             self.learn(message, True)
 
     def privmsg(self, user, channel, message):
+        learn_this = channel != '*'
         if (not self.identified and user.lower().startswith('nickserv!') and
                 'identified' in message):
             self.identified = True
@@ -228,9 +229,6 @@ class Infobat(ampirc.IrcChildBase):
             if to_repaste:
                 self.repaste(target, user, to_repaste)
 
-        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
-            self.learn(message)
-
         m = re.match(
             r'^s*%s\s*[,:> ]+(\S?.*?)[.!?]?\s*$' % self.nickname, message, re.I)
         if m:
@@ -238,19 +236,26 @@ class Infobat(ampirc.IrcChildBase):
         elif channel == self.nickname:
             command = message
         else:
-            return
-        s_command = command.split(' ')
-        command_func = getattr(self, 'infobat_' + s_command[0], None)
-        if command_func is not None and channel_obj.is_usable(s_command[0]):
-            command_func(target, *s_command[1:])
-        elif self.db and channel_obj.is_usable('chain_splice'):
-            action, result = self.db.splice()
-            if action:
-                self.me(target, result)
-            else:
-                if channel != self.nickname:
-                    result = user + ', ' + result
-                self.msg(target, result)
+            command = None
+
+        if command:
+            s_command = command.split(' ')
+            command_func = getattr(self, 'infobat_' + s_command[0], None)
+            if command_func is not None and channel_obj.is_usable(s_command[0]):
+                command_func(target, *s_command[1:])
+                learn_this = False
+            elif self.db and channel_obj.is_usable('chain_splice'):
+                action, result = self.db.splice()
+                if action:
+                    self.me(target, result)
+                else:
+                    if channel != self.nickname:
+                        result = user + ', ' + result
+                    self.msg(target, result)
+
+        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
+            if learn_this:
+                self.learn(message)
 
     def modeChanged(self, user, channel, set, modes, args):
         for mode, arg in zip(modes, args):
@@ -373,9 +378,8 @@ class Infobat(ampirc.IrcChildBase):
                 if line.strip()]
             nlines = len(response)
             if nlines > _MAX_LINES:
-                starting = _MAX_LINES - 4
-                response[starting:-3] = ['(...%d lines, entire response in '
-                    '%s ...)' % (nlines - (_MAX_LINES - 1), paste_url)]
+                response[_MAX_LINES:] = ['(...%d lines, entire response in '
+                    '%s ...)' % (nlines, paste_url)]
             for part in response:
                 self.msg(target, part)
 
