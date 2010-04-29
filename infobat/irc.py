@@ -9,6 +9,7 @@ from infobat import chains, database, http, util
 from datetime import datetime
 from urllib import urlencode
 from urlparse import urljoin
+import lxml.html
 import operator
 import ampirc
 import random
@@ -18,9 +19,9 @@ import re
 
 _lol_regex = re.compile(r'\b([lo]{3,}|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
-    '#python is a no-LOL zone.',
-    'i mean it: no LOL in #python.',
-    'seriously, dude, no LOL in #python.',
+    '%s is a no-LOL zone.',
+    'i mean it: no LOL in %s.',
+    'seriously, dude, no LOL in %s.',
 ]
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca))/)'
@@ -30,6 +31,10 @@ _pastebin_raw = {
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
 }
+_EXEC_PRELUDE = """#coding:utf-8
+import os, sys, math, re, random
+"""
+_MAX_LINES = 2
 
 class CouldNotPastebinError(Exception):
     pass
@@ -50,19 +55,24 @@ class Infobat(ampirc.IrcChildBase):
 
     def __init__(self, amp, uuid):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
-        self.nickname = conf.get('irc', 'nickname')
-        self.max_countdown = conf.getint('database', 'sync_time')
+        self.nickname = conf['irc.nickname'].encode()
+        self.max_countdown = conf['database.dbm.sync_time']
         self.dbpool = database.InfobatDatabaseRunner()
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
 
+    def autojoinChannels(self):
+        for channel in conf['irc.autojoin']:
+            channel_obj = conf.channel(channel)
+            self.join(channel_obj.name.encode(), channel_obj.key)
+
     def signedOn(self):
-        nickserv_pw = conf.get('irc', 'nickserv_pw')
+        nickserv_pw = conf['irc.nickserv_pw']
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw)
         else:
-            self.join(conf.get('irc', 'channels'))
+            self.autojoinChannels()
         self.startTimer('serverPing', 60)
 
     def protocolReady(self, first_time=False):
@@ -108,7 +118,7 @@ class Infobat(ampirc.IrcChildBase):
         amp.InfobatChildBase.connectionLost(self, reason)
 
     def _load_database(self):
-        self.db = chains.Database(conf.get('database', 'db_file'))
+        self.db = chains.Database(conf['database.dbm.db_file'].encode())
 
     def ampircTimer_dbsync(self):
         if self.db is None:
@@ -140,7 +150,37 @@ class Infobat(ampirc.IrcChildBase):
     def learn(self, string, action=False):
         if self.db is None:
             return
-        self.db.learn(string, action)
+        self.db.learn(self.sanitize_learn_input(string), action)
+
+    def sanitize_learn_input(self, string, channel):
+        """Remove extraneous/irrelevant data from input to markov chain
+        
+        - remove nickname prefixes: "nick: foo bar" -> "foo bar"
+        
+        """
+        # channel is included for future use, e.g. in checking the channel
+        # username list
+        
+        # doing more is a good idea?
+        
+        # TODO: use real usernames from the nick list
+        # idea: handle "nick1, nick2: thanks!"
+        # idea: handle obviously technical data like URIs. Too hard? heheh.
+        
+        nick_regex = (r'(?P<nick>[A-Za-z\x5b-\x60\x7b-\x7d]'
+            r'[0-9A-Za-z\x5b-\x60\x7b-\x7d\-]*)') # RFC2812 2.3.1 , extended
+        regex = re.compile(nick_regex + r'\s*(?P<sep>:)\s*(?P<message>.*)')
+        
+        match = regex.match(string)
+        
+        if match is None:
+            sanitized = string
+        else:
+            # in future, do elif to check if the nick group is actually used
+            # in the channel
+            sanitized = match.group('message')
+        
+        return sanitized
 
     def action(self, user, channel, message):
         if not user:
@@ -152,27 +192,29 @@ class Infobat(ampirc.IrcChildBase):
         if (not self.identified and user.lower().startswith('nickserv!') and
                 'identified' in message):
             self.identified = True
-            self.join(conf.get('irc', 'channels'))
+            self.autojoinChannels()
         if not user: return
         user = user.split('!', 1)[0]
         if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
         if channel == self.nickname:
             log.msg('privmsg from %s: %s' % (user, message))
             target = user
+            channel_obj = conf.channel('privmsg')
         else:
             target = channel
+            channel_obj = conf.channel(channel)
 
-        if channel in ('#python',):
-            if message.startswith('!') and message.lstrip('!'):
-                self.notice(user, 'no triggers in %s.' % channel)
-            elif _lol_regex.search(message):
-                self.do_lol(user)
-            else:
-                to_repaste = set(_bad_pastebin_regex.findall(message))
-                if to_repaste:
-                    self.repaste(target, user, to_repaste)
+        if channel_obj.is_usable('anti_trigger') and (
+                message.startswith('!') and message.lstrip('!')):
+            self.notice(user, 'no triggers in %s.' % channel)
+        if channel_obj.is_usable('lol') and _lol_regex.search(message):
+            self.do_lol(user, channel)
+        if channel_obj.is_usable('repaste'):
+            to_repaste = set(_bad_pastebin_regex.findall(message))
+            if to_repaste:
+                self.repaste(target, user, to_repaste)
 
-        if channel != self.nickname:
+        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
             self.learn(message)
 
         m = re.match(
@@ -185,10 +227,9 @@ class Infobat(ampirc.IrcChildBase):
             return
         s_command = command.split(' ')
         command_func = getattr(self, 'infobat_' + s_command[0], None)
-        if command_func is not None:
+        if command_func is not None and channel_obj.is_usable(s_command[0]):
             command_func(target, *s_command[1:])
-        elif self.db and (channel in (
-                self.nickname, '#python-offtopic', '#infobob')):
+        elif self.db and channel_obj.is_usable('chain_splice'):
             action, result = self.db.splice()
             if action:
                 self.me(target, result)
@@ -219,10 +260,10 @@ class Infobat(ampirc.IrcChildBase):
             self.mode(channel, False, 'o', user=self.nickname)
 
     @defer.inlineCallbacks
-    def do_lol(self, nick):
+    def do_lol(self, nick, channel):
         offenses = yield self.dbpool.add_lol(nick)
         message_idx = min(offenses, len(_lol_messages)) - 1
-        self.notice(nick, _lol_messages[message_idx])
+        self.notice(nick, _lol_messages[message_idx] % channel)
 
     @defer.inlineCallbacks
     def pastebin(self, language, data):
@@ -277,22 +318,56 @@ class Infobat(ampirc.IrcChildBase):
             self.msg(target, '%s, %s' % (paste_target, paste_url))
 
     @defer.inlineCallbacks
-    def infobat_codepad(self, target, paste_target, *text):
-        redented = (
-            redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
-        post_data = urlencode(dict(
-            code=redented, lang='Python', submit='Submit', run='True'))
+    def _codepad(self, code, lang='Python', run=True):
+        redented = redent(code.decode('utf8', 'replace')).encode('utf8')
+        post_data = dict(
+            code=redented, lang='Python', submit='Submit', private='True')
+        if run:
+            post_data['run'] = 'True'
+        post_data = urlencode(post_data)
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        ign, fac = yield http.get_page('http://codepad.org/',
+            method='POST', postdata=post_data, headers=headers)
+        paste_url = urljoin('http://codepad.org/',
+            fac.response_headers['location'][0])
+        defer.returnValue(paste_url)
+
+    @defer.inlineCallbacks
+    def infobat_codepad(self, target, paste_target, *text):
         try:
-            _, fac = yield http.get_page('http://codepad.org/',
-                method='POST', postdata=post_data, headers=headers)
+            paste_url = yield self._codepad(' '.join(text))
         except:
             self.msg(target, 'Error: %r' % sys.exc_info()[1])
             raise
         else:
-            paste_url = urljoin(
-                'http://codepad.org/', fac.response_headers['location'][0])
             self.msg(target, '%s, %s' % (paste_target, paste_url))
+
+    @defer.inlineCallbacks
+    def infobat_exec(self, target, *text):
+        try:
+            paste_url = yield self._codepad(_EXEC_PRELUDE + ' '.join(text))
+            page, ign = yield http.get_page(paste_url)
+        except:
+            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            raise
+        else:
+            doc = lxml.html.fromstring(page.decode('utf8', 'replace'))
+            response = u''.join(doc.xpath("//a[@name='output']"
+                "/following-sibling::div/table/tr/td[2]/div/pre/text()"))
+            response = [line.rstrip()
+                for line in response.encode('utf-8').splitlines()
+                if line.strip()]
+            nlines = len(response)
+            if nlines > _MAX_LINES:
+                starting = _MAX_LINES - 4
+                response[starting:-3] = ['(...%d lines, entire response in '
+                    '%s ...)' % (nlines - (_MAX_LINES - 1), paste_url)]
+            for part in response:
+                self.msg(target, part)
+
+    def infobat_print(self, target, *text):
+        """Alias to print the result, aka eval"""
+        return self.infobat_exec(target, 'print', *text)
 
     def infobat_sync(self, target):
         if self.db is not None:
@@ -407,7 +482,8 @@ class InfobatAmpIrcChild(ampirc.AmpIrcChild):
     childProtocol = Infobat
 
     def __init__(self, config_loc, start_time):
-        conf.read([config_loc])
+        with open(config_loc) as cfgFile:
+            conf.load(cfgFile)
         self.parent_start = datetime.strptime(start_time, util.ISOFORMAT)
         ampirc.AmpIrcChild.__init__(self)
 

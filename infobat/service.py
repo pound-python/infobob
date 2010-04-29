@@ -1,3 +1,4 @@
+from __future__ import with_statement
 from zope.interface import implements
 from twisted.plugin import IPlugin
 from twisted.python import usage
@@ -23,10 +24,11 @@ class InfobatServiceMaker(object):
     options = InfobatOptions
     
     def makeService(self, options):
-        conf.read([options.config])
+        with open(options.config) as cfgFile:
+            conf.load(cfgFile)
         conf.config_loc = options.config
         ircFactory = irc.InfobatFactory()
         ircService = internet.TCPClient(
-            conf.get('irc', 'server'), conf.getint('irc', 'port'), 
+            conf['irc.server'], conf['irc.port'], 
             ircFactory, 20, None)
         return ircService
