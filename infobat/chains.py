@@ -6,11 +6,18 @@ ORDER = 8
 FRAGMENT = ORDER * 16384
 punctuation = set(' .!?')
 
-_chain_struct = struct.Struct('>128I')
+def forceUnicode(bytestring):
+    try:
+        obj = bytestring.decode('utf-8')
+    except UnicodeDecodeError:
+        obj = bytestring.decode('latin1')
+    return obj
+
+_chain_struct = struct.Struct('>256I')
 class Chain(object):
     def __init__(self, data=None):
         if data is None:
-            self.data = [0] * 128
+            self.data = [0] * 256
         else:
             self.data = list(_chain_struct.unpack(data))
     
@@ -128,31 +135,39 @@ class Database(object):
         if string.startswith('*'):
             action = True
             string = string.lstrip('*')
+        string = forceUnicode(string).encode('utf-8')
         queue, length = '', 0
+        def _finalize():
+            self.append_chain(queue, '\0')
         for w in string:
-            if w > '\x7f':
+            if w == '\0':
                 continue
             self.wordcount += 1
-            if not queue and w == ' ': 
-                continue
+            if w.isspace():
+                if not queue:
+                    continue
+                elif queue[-1] in '.!?':
+                    _finalize()
+                    queue, length, action = '', 0, False
+                    continue
             if len(queue) == ORDER:
                 self.append_chain(queue, w)
-            if w[-1] in '.!?':
-                queue, length, action = '', 0, False
-            else:
-                queue += w
-                length += 1
-                if length == ORDER:
-                    if action:
-                        self.act_updates.append(queue)
-                    else:
-                        self.start_updates.append(queue)
-                queue = queue[-ORDER:]
+            queue += w
+            length += 1
+            if length == ORDER:
+                if action:
+                    self.act_updates.append(queue)
+                else:
+                    self.start_updates.append(queue)
+            queue = queue[-ORDER:]
+        _finalize()
     
-    def splice(self):
+    def _splice(self):
         result, action = self.random_beginning()
         search, result = result, list(result)
-        while 1:
+        if action:
+            yield '*'
+        while True:
             chain = self.get(search)
             if chain is None:
                 break
@@ -161,14 +176,23 @@ class Database(object):
             self.chaincount += 1
             while True:
                 next = chain.choice()
-                if next in punctuation and random.randrange(ORDER) == 0:
+                if next == '\0':
+                    return
+                elif next in punctuation and random.randrange(ORDER) == 0:
                     continue
                 break
             if len(result) + len(next) > 255:
                 break
+            yield next
             result.append(next)
             search = ''.join(result[-ORDER:])
-        result = ''.join(result)
+    
+    def splice(self):
+        action = False
+        result = ''.join(self._splice())
+        if result.startswith('*'):
+            action = True
+            result = result.lstrip('*')
         return action, result
     
     def __getitem__(self, key):
