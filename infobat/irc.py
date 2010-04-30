@@ -199,7 +199,14 @@ class Infobat(ampirc.IrcChildBase):
     def action(self, user, channel, message):
         if not user:
             return
-        if channel != self.nickname:
+        if channel == self.nickname:
+            log.msg('privaction: * %s %s' % (user, message))
+            target = user
+            channel_obj = conf.channel('privmsg')
+        else:
+            target = channel
+            channel_obj = conf.channel(channel)
+        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
             self.learn(message, True)
 
     def privmsg(self, user, channel, message):
@@ -247,7 +254,7 @@ class Infobat(ampirc.IrcChildBase):
             elif self.db and channel_obj.is_usable('chain_splice'):
                 action, result = self.db.splice()
                 if action:
-                    self.me(target, result)
+                    self.describe(target, result)
                 else:
                     if channel != self.nickname:
                         result = user + ', ' + result
@@ -445,7 +452,7 @@ class Infobat(ampirc.IrcChildBase):
         if not fortunes:
             log.msg('no magic8 file')
             return
-        self.me(target, 'shakes the psychic black sphere.')
+        self.describe(target, 'shakes the psychic black sphere.')
         r = random.Random(''.join(seed) + datetime.now().isoformat())
         st = open(fortunes.encode())
         l = st.readlines()

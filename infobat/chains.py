@@ -154,7 +154,6 @@ class Database(object):
                 self.append_chain(queue, w)
             queue += w
             length += 1
-            print `queue, length, ORDER`
             if length == ORDER:
                 if action:
                     self.act_updates.append(queue)
