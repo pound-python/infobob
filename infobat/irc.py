@@ -455,7 +455,7 @@ class Infobat(ampirc.IrcChildBase):
 
     def infobat_probability(self, target, *sentence):
         if self.db is None: return
-        sentence = ' '.join(sentence)
+        sentence = ' '.join(sentence) + '\0'
         if len(sentence) < chains.ORDER:
             return
         start_count = 0
