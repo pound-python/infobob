@@ -154,6 +154,7 @@ class Database(object):
                 self.append_chain(queue, w)
             queue += w
             length += 1
+            print `queue, length, ORDER`
             if length == ORDER:
                 if action:
                     self.act_updates.append(queue)
@@ -164,9 +165,10 @@ class Database(object):
     
     def _splice(self):
         result, action = self.random_beginning()
-        search, result = result, list(result)
         if action:
             yield '*'
+        yield result
+        search, result = result, list(result)
         while True:
             chain = self.get(search)
             if chain is None:
