@@ -1,0 +1,97 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR ORGANIZATION
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: infobat 0.1\n"
+"POT-Creation-Date: 2010-05-01 14:28+BRT\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: utf-8\n"
+"Generated-By: pygettext.py 1.5\n"
+
+
+#: irc.py:231
+msgid "no triggers in %s."
+msgstr "%s não possui triggers."
+
+#: irc.py:315
+msgid "in the future, please use a less awful pastebin (e.g. paste.pocoo.org) instead of %s."
+msgstr "por favor, da próxima vez use um site menos terrível que %s (por exemplo paste.pocoo.org)."
+
+#: irc.py:333
+msgid "%s (repasted for %s)"
+msgstr "%s (recolado para %s)"
+
+#: irc.py:343 irc.py:370 irc.py:382
+msgid "Error: %r"
+msgstr "Erro: %r"
+
+#: irc.py:393
+msgid "(... %d lines, entire response in %s ...)"
+msgstr "(... %d linhas, resposta completa em %s...)"
+
+#: irc.py:406
+msgid "Done."
+msgstr "Concluído."
+
+#: irc.py:408
+msgid "Database not loaded."
+msgstr "Banco de dados não carregado."
+
+#: irc.py:417
+msgid "Database unlocked."
+msgstr "Banco de dados destrancado."
+
+#: irc.py:419 irc.py:428
+msgid "Database was unlocked."
+msgstr "Banco de dados estava destrancado."
+
+#: irc.py:426
+msgid "Database locked."
+msgstr "Banco de dados trancado."
+
+#: irc.py:436
+msgid "%d days"
+msgstr "%d dias"
+
+#: irc.py:440
+msgid "%d hours"
+msgstr "%d horas"
+
+#: irc.py:442
+msgid "%d minutes"
+msgstr "%d minutos"
+
+#: irc.py:444
+msgid "%d seconds"
+msgstr "%d segundos"
+
+#: irc.py:450
+msgid "%s and %s"
+msgstr "%s e %s"
+
+#: irc.py:451
+msgid "I have been online for %s. In that time, I've processed %d characters and spliced %d chains. Currently, I reference %d chains with %d beginnings (%d actions)."
+msgstr "Eu estive online por %s. Neste tempo, eu processei %d caracteres e gerei %d cadeias. Faço referência neste momento à %d cadeias com %d inícios (%d ações)."
+
+#: irc.py:465
+msgid "shakes the psychic black sphere."
+msgstr "olha para sua bola de cristal."
+
+#: irc.py:471
+msgid "It says: \"%s\""
+msgstr "Ela diz: \"%s\""
+
+#: irc.py:508
+msgid "%0.6f%% chance (1 in %s) across %d probabilities; %0.6f%% average, standard deviation %0.6f%%, %0.6f%% low, %0.6f%% high."
+msgstr "%0.6f%% de chance (uma em %s) em %d probabilidades; média %0.6f%%, desvio padrão %0.6f%%, %0.6f%% baixo, %0.6f%% alto."
+
+#: irc.py:519
+msgid "Okay!"
+msgstr "Certo!"
+
