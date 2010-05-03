@@ -25,12 +25,13 @@ _lol_messages = [
     'seriously, dude, no LOL in %s.',
 ]
 _bad_pastebin_regex = re.compile(
-    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca))/)'
-    r'([a-z0-9]+)/?', re.I)
+    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
+    r'|titanpad\.com)/)([a-z0-9]+)/?', re.I)
 _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
+    'titanpad.com': 'http://%stitanpad.com/ep/pad/export/%s/latest?format=txt',
 }
 _EXEC_PRELUDE = """#coding:utf-8
 import os, sys, math, re, random
