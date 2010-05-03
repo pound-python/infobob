@@ -33,7 +33,7 @@ msgstr "Erro: %r"
 
 #: irc.py:393
 msgid "(... %d lines, entire response in %s ...)"
-msgstr "(... %d linhas, resposta completa em %s...)"
+msgstr "(... %d linhas, resposta completa em %s ...)"
 
 #: irc.py:406
 msgid "Done."
