@@ -24,15 +24,27 @@ _lol_messages = [
     'i mean it: no LOL in %s.',
     'seriously, dude, no LOL in %s.',
 ]
+
+_etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
+    'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
+    'meetingworlds.com', 'netpad.com.br', 'openetherpad.org', 'titanpad.com',
+    'pad.telecomix.org']
+
+_etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
+
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
-    r'|titanpad\.com)/)([a-z0-9]+)/?', re.I)
+    r'|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
+
 _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
-    'titanpad.com': 'http://%stitanpad.com/ep/pad/export/%s/latest?format=txt',
 }
+
+for ep in _etherpad_like:
+    _pastebin_raw[ep] = 'http://%%s%s/ep/pad/export/%%s/latest?format=txt' % (ep,)
+
 _EXEC_PRELUDE = """#coding:utf-8
 import os, sys, math, re, random
 """
