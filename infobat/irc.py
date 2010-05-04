@@ -142,7 +142,7 @@ class Infobat(ampirc.IrcChildBase):
             self.db.sync()
         if self.dbpool:
             self.dbpool.close()
-        amp.InfobatChildBase.connectionLost(self, reason)
+        ampirc.IrcChildBase.connectionLost(self, reason)
 
     def _load_database(self):
         self.db = chains.Database(conf['database.dbm.db_file'].encode())
