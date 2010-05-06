@@ -500,9 +500,9 @@ class Infobat(ampirc.IrcChildBase):
         std_dev = (sum((i - average) ** 2 for i in probabilities) /
             len(probabilities)) ** .5
         try:
-            inverse = u'%.0f' % (1 / tot_probability)
+            inverse = '%.0f' % (1 / tot_probability)
         except (OverflowError, ZeroDivisionError):
-            inverse = u'inf'
+            inverse = _(u'inf')
         self.msg(target, _(
             u'%0.6f%% chance (1 in %s) across %d probabilities; '
             u'%0.6f%% average, standard deviation %0.6f%%, '
