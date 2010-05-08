@@ -1,9 +1,8 @@
 import collections
+import itertools
 import random
 import struct
-import bsddb
-ORDER = 8
-FRAGMENT = ORDER * 16384
+import bsddb3
 punctuation = set(' .!?')
 
 def forceUnicode(bytestring):
@@ -48,23 +47,24 @@ class Chain(object):
         self.data = [v1 + v2 for v1, v2 in zip(self.data, chainobj.data)]
 
 class Database(object):
-    def __init__(self, filename):
-        self.filename = filename
+    def __init__(self, config):
+        self.filename = config['db_file']
+        self.order = config['order']
+        self.fragment = config['fragment']
+        self.fragment_size = self.fragment * self.order
         self.start_updates = []
         self.act_updates = []
         self.updates = collections.defaultdict(Chain)
-        self.db = bsddb.hashopen(filename, 'c')
+        self.db = bsddb3.hashopen(self.filename, 'c',
+            pgsize=config['page_size'], ffactor=config['fill_factor'])
         if '__offset__' not in self.db:
             self.db['__offset__'] = '0;0'
-            self.db['__fragment__'] = '0;0'
             self.db['__start0__'] = ''
             self.db['__act0__'] = ''
             self.db['__length__'] = '0'
             self.db.sync()
         self.start_offset, self.actions = [
             int(x) for x in self.db['__offset__'].split(';')]
-        self.start_fragment, self.act_fragment = [
-            int(x) for x in self.db['__fragment__'].split(';')]
         self.length = int(self.db['__length__'])
         self.wordcount = self.chaincount = 0
     
@@ -81,29 +81,30 @@ class Database(object):
             self.db[chain] = chainobj.pack()
         self.updates.clear()
         if self.start_updates:
-            self.start_offset += len(self.start_updates)
-            self.start_fragment = self.update_fragment('__start%d__', 
-                self.start_fragment, ''.join(self.start_updates))
+            self.start_offset = self.update_fragment('__start%d__', 
+                self.start_offset, self.start_updates)
             self.start_updates = []
         if self.act_updates:
-            self.actions += len(self.act_updates)
-            self.act_fragment = self.update_fragment('__act%d__', 
-                self.act_fragment, ''.join(self.act_updates))
+            self.actions = self.update_fragment('__act%d__', 
+                self.actions, self.act_updates)
             self.act_updates = []
         self.db['__offset__'] = '%d;%d' % (self.start_offset, self.actions)
-        self.db['__fragment__'] = '%d;%d' % (
-            self.start_fragment, self.act_fragment)
         self.db['__length__'] = str(self.length)
         self.db.sync()
     
-    def update_fragment(self, fmt, which, value):
-        existing = self.db[fmt % which] + value
-        while existing:
-            self.db[fmt % which], existing = (
-                existing[:FRAGMENT], existing[FRAGMENT:])
-            if existing:
-                which += 1
-        return which
+    def update_fragment(self, fmt, nvalues, values):
+        fragment, offset = divmod(nvalues, self.fragment)
+        values_it = iter(values)
+        while True:
+            to_insert = ''.join(
+                itertools.islice(values_it, self.fragment - offset))
+            if not to_insert:
+                break
+            self.db.db.put(fmt % fragment, to_insert, 
+                doff=offset * self.order, dlen=len(to_insert))
+            fragment += 1
+            offset = 0
+        return nvalues + len(values)
     
     def append_chain(self, chain, val):
         self.updates[chain].append(val)
@@ -112,15 +113,14 @@ class Database(object):
         start_choice = random.randrange(self.start_offset + self.actions)
         action = False
         if start_choice < self.start_offset:
-            start_choice *= ORDER
-            which, offset = divmod(start_choice, FRAGMENT)
-            which = '__start%d__' % which
+            start_choice *= self.order
+            fmt = '__start%d__'
         else:
-            start_choice = (start_choice - self.start_offset) * ORDER
-            which, offset = divmod(start_choice, FRAGMENT)
-            which = '__act%d__' % which
+            start_choice = (start_choice - self.start_offset) * self.order
+            fmt = '__act%d__'
             action = True
-        result = self.db[which][offset:offset + ORDER]
+        which, offset = divmod(start_choice, self.fragment_size)
+        result = self.db.db.get(fmt % which, doff=offset, dlen=self.order)
         return result, action
     
     def random_beginning(self):
@@ -150,16 +150,16 @@ class Database(object):
                     _finalize()
                     queue, length, action = '', 0, False
                     continue
-            if len(queue) == ORDER:
+            if len(queue) == self.order:
                 self.append_chain(queue, w)
             queue += w
             length += 1
-            if length == ORDER:
+            if length == self.order:
                 if action:
                     self.act_updates.append(queue)
                 else:
                     self.start_updates.append(queue)
-            queue = queue[-ORDER:]
+            queue = queue[-self.order:]
         _finalize()
     
     def _splice(self):
@@ -169,24 +169,22 @@ class Database(object):
         yield result
         search, result = result, list(result)
         while True:
-            chain = self.get(search)
+            chain = self.chain(search)
             if chain is None:
                 break
-            else:
-                chain = Chain(chain)
             self.chaincount += 1
             while True:
                 next = chain.choice()
                 if next == '\0':
                     return
-                elif next in punctuation and random.randrange(ORDER) == 0:
+                elif next in punctuation and random.randrange(self.order) == 0:
                     continue
                 break
             if len(result) + len(next) > 255:
                 break
             yield next
             result.append(next)
-            search = ''.join(result[-ORDER:])
+            search = ''.join(result[-self.order:])
     
     def splice(self):
         action = False
@@ -196,6 +194,32 @@ class Database(object):
             result = result.lstrip('*')
         return action, result
     
+    def calc_probabilities(self, sentence):
+        sentence += '\0'
+        if len(sentence) < self.order:
+            return []
+        start_count = 0
+        search = sentence[:self.order]
+        for which in xrange((self.start_offset // self.fragment) + 1):
+            chain = self.db['__start%d__' % which]
+            idx = -1
+            while True:
+                idx = chain.find(search, idx + 1)
+                if idx == -1:
+                    break
+                elif idx % self.order == 0:
+                    start_count += 1
+        probabilities = [float(start_count) / self.start_offset]
+        for start in xrange(len(sentence) - self.order):
+            chunk = sentence[start:start+self.order]
+            next = sentence[start+self.order]
+            chain = self.chain(chunk)
+            if chain:
+                probabilities.append(float(chain[next]) / sum(chain.data))
+            else:
+                probabilities.append(0)
+        return probabilities
+    
     def __getitem__(self, key):
         return self.db[key]
     
@@ -204,6 +228,13 @@ class Database(object):
     
     def get(self, key, default=None):
         return self.db.get(key, default)
+    
+    def chain(self, key):
+        val = self.get(key)
+        if val is None:
+            return None
+        else:
+            return Chain(val)
     
     def __nonzero__(self):
         return self.start_offset + self.actions > 0
