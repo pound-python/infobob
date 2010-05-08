@@ -1,4 +1,4 @@
-from twisted.internet import reactor, protocol, task, defer
+from twisted.internet import reactor, protocol, task, defer, threads
 from twisted.enterprise import adbapi
 from twisted.protocols import amp
 from twisted.python import log, reflect
@@ -132,14 +132,15 @@ class Infobat(ampirc.IrcChildBase):
         amp.InfobatChildBase.connectionLost(self, reason)
 
     def _load_database(self):
-        self.db = chains.Database(conf['database.dbm.db_file'].encode())
+        self.db = chains.Database(conf['database.dbm'])
 
+    @defer.inlineCallbacks
     def ampircTimer_dbsync(self):
         if self.db is None:
             return
         self.countdown -= 1
         if self.countdown == 0:
-            self.db.sync()
+            yield threads.deferToThread(self.db.sync)
             self.countdown = self.max_countdown
 
     @defer.inlineCallbacks
@@ -394,17 +395,19 @@ class Infobat(ampirc.IrcChildBase):
         """Alias to print the result, aka eval"""
         return self.infobat_exec(target, 'print', *text)
 
+    @defer.inlineCallbacks
     def infobat_sync(self, target):
         if self.db is not None:
-            self.db.sync()
+            yield threads.deferToThread(self.db.sync)
             self.msg(target, 'Done.')
         else:
             self.msg(target, 'Database not loaded.')
 
+    @defer.inlineCallbacks
     def infobat_unlock(self, target):
         if self.db is not None:
             self.stopTimer('dbsync')
-            self.db.sync()
+            yield threads.deferToThread(self.db.sync)
             self.db.close()
             self.db = None
             self.msg(target, 'Database unlocked.')
@@ -462,30 +465,10 @@ class Infobat(ampirc.IrcChildBase):
 
     def infobat_probability(self, target, *sentence):
         if self.db is None: return
-        sentence = ' '.join(sentence) + '\0'
-        if len(sentence) < chains.ORDER:
+        probabilities = self.db.calc_probabilities(' '.join(sentence))
+        if not probabilities:
+            self.msg(target, 'line too short.')
             return
-        start_count = 0
-        search = sentence[:chains.ORDER]
-        for which in xrange(self.db.start_fragment + 1):
-            chain = self.db['__start%d__' % which]
-            idx = -1
-            while True:
-                idx = chain.find(search, idx + 1)
-                if idx == -1:
-                    break
-                elif idx % chains.ORDER == 0:
-                    start_count += 1
-        probabilities = [float(start_count) / self.db.start_offset]
-        for start in xrange(len(sentence) - chains.ORDER):
-            chunk = sentence[start:start + chains.ORDER]
-            next = sentence[start + chains.ORDER]
-            chain = self.db.get(chunk)
-            if chain:
-                chain = chains.Chain(chain)
-                probabilities.append(float(chain[next]) / sum(chain.data))
-            else:
-                probabilities.append(0)
         tot_probability = reduce(operator.mul, probabilities)
         average = sum(probabilities) / len(probabilities)
         std_dev = (sum((i - average) ** 2 for i in probabilities) /
