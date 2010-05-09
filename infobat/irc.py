@@ -343,7 +343,8 @@ class Infobat(ampirc.IrcChildBase):
                 language = 'multi'
             repasted_url = yield self.pastebin(language, data)
             yield self.dbpool.add_repaste(urls, repasted_url)
-        self.msg(target, _(u'%s (repasted for %s)') % (repasted_url, user))
+        self.msg(target, _(u'%(url)s (repasted for %(user)s)') %
+            dict(url=repasted_url, user=user))
 
     @defer.inlineCallbacks
     def infobat_redent(self, target, channel, paste_target, *text):
@@ -402,8 +403,9 @@ class Infobat(ampirc.IrcChildBase):
                 if line.strip()]
             nlines = len(response)
             if nlines > _MAX_LINES:
-                response[_MAX_LINES-1:] = [_(u'(... %d lines, entire response '
-                    u'in %s ...)') % (nlines, paste_url)]
+                response[_MAX_LINES-1:] = [_(u'(... %(nlines)d lines, '
+                u'entire response in %(url)s ...)') %
+                    dict(nlines=nlines, url=paste_url)]
             for part in response:
                 self.msg(target, part)
 
@@ -461,12 +463,20 @@ class Infobat(ampirc.IrcChildBase):
         elif len(timestr) == 1:
             timestr = timestr[0]
         else:
-            timestr = _(u'%s and %s') % (', '.join(timestr[:-1]), timestr[-1])
-        result = _(u"I have been online for %s. In that time, I've processed "
-            u"%d characters and spliced %d chains. Currently, I reference %d "
-            u"chains with %d beginnings (%d actions).") % (
-                timestr, self.db.wordcount, self.db.chaincount, len(self.db),
-                self.db.start_offset + self.db.actions, self.db.actions
+            timestr = _(u'%(group)s and %(last)s') % dict(
+                group=', '.join(timestr[:-1]),
+                last=timestr[-1],
+            )
+        result = _(u"I have been online for %(time_online)s. In that time, "
+            u"I've processed %(wordcount)d characters and spliced "
+            u"%(chaincount)d chains. Currently, I reference %(dblen)d "
+            u"chains with %(begin)d beginnings (%(actions)d actions).") % dict(
+                time_online=timestr,
+                wordcount=self.db.wordcount,
+                chaincount=self.db.chaincount,
+                dblen=len(self.db),
+                begin=self.db.start_offset + self.db.actions,
+                actions=self.db.actions,
             )
         self.msg(target, result)
 
@@ -500,13 +510,18 @@ class Infobat(ampirc.IrcChildBase):
         except (OverflowError, ZeroDivisionError):
             inverse = _(u'inf')
         self.msg(target, _(
-            u'%0.6f%% chance (1 in %s) across %d probabilities; '
-            u'%0.6f%% average, standard deviation %0.6f%%, '
-            u'%0.6f%% low, %0.6f%% high.') % (
-                tot_probability * 100, inverse,
-                len(probabilities),
-                average * 100, std_dev * 100,
-                min(probabilities) * 100, max(probabilities) * 100))
+            u'%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d '
+            u'probabilities; %(avg)0.6f%% average, standard deviation '
+            u'%(deviation)0.6f%%, %(min_prob)0.6f%% low, %(max_prob)0.6f%% '
+            u'high.') % dict(
+                chance=tot_probability * 100,
+                inverse=inverse,
+                prob_len=len(probabilities),
+                avg=average * 100,
+                deviation=std_dev * 100,
+                min_prob=min(probabilities) * 100,
+                max_prob=max(probabilities) * 100,
+            ))
 
     def infobat_reload(self, target, channel):
         _ = channel.translate

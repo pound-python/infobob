@@ -1,25 +1,28 @@
-# infobat translation file
+# Portuguese translations for infobat
+# Traduções em português para o pacote infobat
 # This file is put in the public domain.
-# Copyright (c) Clóvis Fabrício Costa , 2010.
+# Clóvis Fabrício Costa <nosklo@gmail.com>, 2010.
 #
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: infobat 0.1r66\n"
+"Project-Id-Version: infobat 0.1r67\n"
 "Report-Msgid-Bugs-To: habnabit@gmail.com\n"
-"POT-Creation-Date: 2010-05-08 20:10-0300\n"
-"PO-Revision-Date: 2010-05-08 20:21-0300\n"
+"POT-Creation-Date: 2010-05-09 01:32-0300\n"
+"PO-Revision-Date: 2010-05-08 23:45-0300\n"
 "Last-Translator: Clóvis Fabrício Costa <nosklo@gmail.com>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language-Team: none\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: irc.py:231
+#: infobat/irc.py:245
+#, python-format
 msgid "no triggers in %s."
 msgstr "%s não possui triggers."
 
-#: irc.py:315
+#: infobat/irc.py:328
+#, python-format
 msgid ""
 "in the future, please use a less awful pastebin (e.g. paste.pocoo.org) "
 "instead of %s."
@@ -27,92 +30,105 @@ msgstr ""
 "por favor, da próxima vez use um site menos terrível que %s (por exemplo "
 "paste.pocoo.org)."
 
-#: irc.py:333
-msgid "%s (repasted for %s)"
-msgstr "%s (recolado para %s)"
+#: infobat/irc.py:346
+#, python-format
+msgid "%(url)s (repasted for %(user)s)"
+msgstr "%(url)s (recolado para %(user)s)"
 
-#: irc.py:343 irc.py:370 irc.py:382
+#: infobat/irc.py:357 infobat/irc.py:383 infobat/irc.py:395
+#, python-format
 msgid "Error: %r"
 msgstr "Erro: %r"
 
-#: irc.py:393
-msgid "(... %d lines, entire response in %s ...)"
-msgstr "(... %d linhas, resposta completa em %s ...)"
+#: infobat/irc.py:406
+#, python-format
+msgid "(... %(nlines)d lines, entire response in %(url)s ...)"
+msgstr "(... %(nlines)d linhas, resposta completa em %(url)s ...)"
 
-#: irc.py:406
+#: infobat/irc.py:421
 msgid "Done."
 msgstr "Concluído."
 
-#: irc.py:408
+#: infobat/irc.py:423
 msgid "Database not loaded."
 msgstr "Banco de dados não carregado."
 
-#: irc.py:417
+#: infobat/irc.py:433
 msgid "Database unlocked."
 msgstr "Banco de dados destrancado."
 
-#: irc.py:419 irc.py:428
+#: infobat/irc.py:435 infobat/irc.py:444
 msgid "Database was unlocked."
 msgstr "Banco de dados estava destrancado."
 
-#: irc.py:426
+#: infobat/irc.py:442
 msgid "Database locked."
 msgstr "Banco de dados trancado."
 
-#: irc.py:436
+#: infobat/irc.py:452
+#, python-format
 msgid "%d days"
 msgstr "%d dias"
 
-#: irc.py:440
+#: infobat/irc.py:456
+#, python-format
 msgid "%d hours"
 msgstr "%d horas"
 
-#: irc.py:442
+#: infobat/irc.py:458
+#, python-format
 msgid "%d minutes"
 msgstr "%d minutos"
 
-#: irc.py:444
+#: infobat/irc.py:460
+#, python-format
 msgid "%d seconds"
 msgstr "%d segundos"
 
-#: irc.py:450
-msgid "%s and %s"
-msgstr "%s e %s"
+#: infobat/irc.py:466
+#, python-format
+msgid "%(group)s and %(last)s"
+msgstr "%(group)s e %(last)s"
 
-#: irc.py:451
+#: infobat/irc.py:470
+#, python-format
 msgid ""
-"I have been online for %s. In that time, I've processed %d characters and "
-"spliced %d chains. Currently, I reference %d chains with %d beginnings (%d "
-"actions)."
+"I have been online for %(time_online)s. In that time, I've processed %"
+"(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
+"reference %(dblen)d chains with %(begin)d beginnings (%(actions)d actions)."
 msgstr ""
-"Eu estive online por %s. Neste tempo, eu processei %d caracteres e gerei %d "
-"cadeias. Faço referência neste momento à %d cadeias com %d inícios (%d "
-"ações)."
+"Eu estive online por %(time_online)s. Neste tempo, eu processei %(wordcount)"
+"d caracteres e gerei %(chaincount)d cadeias. Faço referência neste momento à "
+"%(dblen)d cadeias com %(begin)d inícios (%(actions)d ações)."
 
-#: irc.py:465
+#: infobat/irc.py:489
 msgid "shakes the psychic black sphere."
 msgstr "olha para sua bola de cristal."
 
-#: irc.py:471
+#: infobat/irc.py:495
+#, python-format
 msgid "It says: \"%s\""
 msgstr "Ela diz: \"%s\""
 
-#: infobat/irc.py:492
+#: infobat/irc.py:502
 msgid "line too short."
 msgstr "linha muito curta."
 
-#: infobat/irc.py:505
+#: infobat/irc.py:511
 msgid "inf"
 msgstr "inf"
 
-#: irc.py:508
+#: infobat/irc.py:513
+#, python-format
 msgid ""
-"%0.6f%% chance (1 in %s) across %d probabilities; %0.6f%% average, standard "
-"deviation %0.6f%%, %0.6f%% low, %0.6f%% high."
+"%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
+"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f%"
+"% low, %(max_prob)0.6f%% high."
 msgstr ""
-"%0.6f%% de chance (uma em %s) em %d probabilidades; média %0.6f%%, desvio "
-"padrão %0.6f%%, %0.6f%% baixo, %0.6f%% alto."
+"%(chance)0.6f%% de chance (uma em %(inverse)s) em %(prob_len)d "
+"probabilidades; média %(avg)0.6f%%, desvio padrão %(deviation)0.6f%%, mínimo "
+"%(min_prob)0.6f%%, máximo %(max_prob)0.6f%%."
 
-#: irc.py:519
+#: infobat/irc.py:528
 msgid "Okay!"
 msgstr "Certo!"
