@@ -239,16 +239,16 @@ class Infobat(ampirc.IrcChildBase):
         else:
             target = channel
             channel_obj = conf.channel(channel)
-
+        _ = channel_obj.translate
         if channel_obj.is_usable('anti_trigger') and (
                 message.startswith('!') and message.lstrip('!')):
-            self.notice(user, 'no triggers in %s.' % channel)
+            self.notice(user, _(u'no triggers in %s.') % channel)
         if channel_obj.is_usable('lol') and _lol_regex.search(message):
-            self.do_lol(user, channel)
+            self.do_lol(user, channel, _)
         if channel_obj.is_usable('repaste'):
             to_repaste = set(_bad_pastebin_regex.findall(message))
             if to_repaste:
-                self.repaste(target, user, to_repaste)
+                self.repaste(target, user, to_repaste, _)
 
         m = re.match(
             r'^s*%s\s*[,:> ]+(\S?.*?)[.!?]?\s*$' % self.nickname, message, re.I)
@@ -263,7 +263,7 @@ class Infobat(ampirc.IrcChildBase):
             s_command = command.split(' ')
             command_func = getattr(self, 'infobat_' + s_command[0], None)
             if command_func is not None and channel_obj.is_usable(s_command[0]):
-                command_func(target, *s_command[1:])
+                command_func(target, channel_obj, *s_command[1:])
                 learn_this = False
             elif self.db and channel_obj.is_usable('chain_splice'):
                 action, result = self.db.splice()
@@ -300,10 +300,10 @@ class Infobat(ampirc.IrcChildBase):
             self.mode(channel, False, 'o', user=self.nickname)
 
     @defer.inlineCallbacks
-    def do_lol(self, nick, channel):
+    def do_lol(self, nick, channel, _):
         offenses = yield self.dbpool.add_lol(nick)
         message_idx = min(offenses, len(_lol_messages)) - 1
-        self.notice(nick, _lol_messages[message_idx] % channel)
+        self.notice(nick, _(_lol_messages[message_idx]) % channel)
 
     @defer.inlineCallbacks
     def pastebin(self, language, data):
@@ -323,36 +323,37 @@ class Infobat(ampirc.IrcChildBase):
         raise CouldNotPastebinError()
 
     @defer.inlineCallbacks
-    def repaste(self, target, user, pastes):
-        which_bin = ', '.join(set(bin for _, _, bin, _ in pastes))
-        self.notice(user, 'in the future, please use a less awful pastebin '
-            '(e.g. paste.pocoo.org) instead of %s.' % which_bin)
-        urls = '|'.join(sorted(base + p_id for base, _, _, p_id in pastes))
+    def repaste(self, target, user, pastes, _):
+        which_bin = ', '.join(set(bin for base, pfix, bin, p_id in pastes))
+        self.notice(user, _(u'in the future, please use a less awful pastebin '
+            u'(e.g. paste.pocoo.org) instead of %s.') % which_bin)
+        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
         repasted_url = yield self.dbpool.get_repaste(urls)
         if repasted_url is None:
             defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
-                for _, prefix, bin, paste_id in pastes]
+                for base, prefix, bin, paste_id in pastes]
             pastes_data = yield defer.gatherResults(defs)
             if len(pastes_data) == 1:
                 data = pastes_data[0][0]
                 language = 'python'
             else:
                 data = '\n'.join('### %s.py\n%s' % (paste_id, paste)
-                    for (_, _, _, paste_id), (paste, _)
+                    for (base, prefix, bin, paste_id), (paste, ign)
                     in zip(pastes, pastes_data))
                 language = 'multi'
             repasted_url = yield self.pastebin(language, data)
             yield self.dbpool.add_repaste(urls, repasted_url)
-        self.msg(target, '%s (repasted for %s)' % (repasted_url, user))
+        self.msg(target, _(u'%s (repasted for %s)') % (repasted_url, user))
 
     @defer.inlineCallbacks
-    def infobat_redent(self, target, paste_target, *text):
+    def infobat_redent(self, target, channel, paste_target, *text):
+        _ = channel.translate
         redented = (
             redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
         try:
             paste_url = yield self.pastebin('python', redented)
         except:
-            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
             raise
         else:
             self.msg(target, '%s, %s' % (paste_target, paste_url))
@@ -373,22 +374,24 @@ class Infobat(ampirc.IrcChildBase):
         defer.returnValue(paste_url)
 
     @defer.inlineCallbacks
-    def infobat_codepad(self, target, paste_target, *text):
+    def infobat_codepad(self, target, channel, paste_target, *text):
+        _ = channel.translate
         try:
             paste_url = yield self._codepad(' '.join(text))
         except:
-            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
             raise
         else:
             self.msg(target, '%s, %s' % (paste_target, paste_url))
 
     @defer.inlineCallbacks
-    def infobat_exec(self, target, *text):
+    def infobat_exec(self, target, channel, *text):
+        _ = channel.translate
         try:
             paste_url = yield self._codepad(_EXEC_PRELUDE + ' '.join(text))
             page, ign = yield http.get_page(paste_url)
         except:
-            self.msg(target, 'Error: %r' % sys.exc_info()[1])
+            self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
             raise
         else:
             doc = lxml.html.fromstring(page.decode('utf8', 'replace'))
@@ -399,88 +402,94 @@ class Infobat(ampirc.IrcChildBase):
                 if line.strip()]
             nlines = len(response)
             if nlines > _MAX_LINES:
-                response[_MAX_LINES-1:] = ['(... %d lines, entire response in '
-                    '%s ...)' % (nlines, paste_url)]
+                response[_MAX_LINES-1:] = [_(u'(... %d lines, entire response '
+                    u'in %s ...)') % (nlines, paste_url)]
             for part in response:
                 self.msg(target, part)
 
-    def infobat_print(self, target, *text):
+    def infobat_print(self, target, channel, *text):
         """Alias to print the result, aka eval"""
-        return self.infobat_exec(target, 'print', *text)
+        return self.infobat_exec(target, channel, 'print', *text)
 
     @defer.inlineCallbacks
-    def infobat_sync(self, target):
+    def infobat_sync(self, target, channel):
+        _ = channel.translate
         if self.db is not None:
             yield threads.deferToThread(self.db.sync)
-            self.msg(target, 'Done.')
+            self.msg(target, _(u'Done.'))
         else:
-            self.msg(target, 'Database not loaded.')
+            self.msg(target, _(u'Database not loaded.'))
 
     @defer.inlineCallbacks
-    def infobat_unlock(self, target):
+    def infobat_unlock(self, target, channel):
+        _ = channel.translate
         if self.db is not None:
             self.stopTimer('dbsync')
             yield threads.deferToThread(self.db.sync)
             self.db.close()
             self.db = None
-            self.msg(target, 'Database unlocked.')
+            self.msg(target, _(u'Database unlocked.'))
         else:
-            self.msg(target, 'Database was unlocked.')
+            self.msg(target, _(u'Database was unlocked.'))
 
-    def infobat_lock(self, target):
+    def infobat_lock(self, target, channel):
+        _ = channel.translate
         if self.db is None:
             self._load_database()
             self.startTimer('dbsync', 30)
-            self.msg(target, 'Database locked.')
+            self.msg(target, _(u'Database locked.'))
         else:
-            self.msg(target, 'Database was unlocked.')
+            self.msg(target, _(u'Database was unlocked.'))
 
-    def infobat_stats(self, target):
+    def infobat_stats(self, target, channel):
+        _ = channel.translate
         if self.db is None: return
         delta = datetime.now() - self.amp.parent_start
         timestr = []
         if delta.days:
-            timestr.append('%d days' % delta.days)
+            timestr.append(_(u'%d days') % delta.days)
         minutes, seconds = divmod(delta.seconds, 60)
         hours, minutes = divmod(minutes, 60)
         if hours:
-            timestr.append('%d hours' % hours)
+            timestr.append(_(u'%d hours') % hours)
         if minutes:
-            timestr.append('%d minutes' % minutes)
+            timestr.append(_(u'%d minutes') % minutes)
         if seconds:
-            timestr.append('%d seconds' % seconds)
+            timestr.append(_(u'%d seconds') % seconds)
         if not timestr:
-            timestr = ''
+            timestr = u''
         elif len(timestr) == 1:
             timestr = timestr[0]
         else:
-            timestr = '%s and %s' % (', '.join(timestr[:-1]), timestr[-1])
-        result = ("I have been online for %s. In that time, I've processed %d "
-            "characters and spliced %d chains. Currently, I reference %d "
-            "chains with %d beginnings (%d actions).") % (
+            timestr = _(u'%s and %s') % (', '.join(timestr[:-1]), timestr[-1])
+        result = _(u"I have been online for %s. In that time, I've processed "
+            u"%d characters and spliced %d chains. Currently, I reference %d "
+            u"chains with %d beginnings (%d actions).") % (
                 timestr, self.db.wordcount, self.db.chaincount, len(self.db),
                 self.db.start_offset + self.db.actions, self.db.actions
             )
         self.msg(target, result)
 
-    def infobat_divine(self, target, *seed):
+    def infobat_divine(self, target, channel, *seed):
+        _ = channel.translate
         fortunes = conf['misc.magic8_file']
         if not fortunes:
             log.msg('no magic8 file')
             return
-        self.describe(target, 'shakes the psychic black sphere.')
+        self.describe(target, _(u'shakes the psychic black sphere.'))
         r = random.Random(''.join(seed) + datetime.now().isoformat())
         st = open(fortunes.encode())
         l = st.readlines()
         st.close()
         l = r.choice(l).strip()
-        self.msg(target, 'It says: "%s"' % l)
+        self.msg(target, _('It says: "%s"') % l)
 
-    def infobat_probability(self, target, *sentence):
+    def infobat_probability(self, target, channel, *sentence):
+        _ = channel.translate
         if self.db is None: return
         probabilities = self.db.calc_probabilities(' '.join(sentence))
         if not probabilities:
-            self.msg(target, 'line too short.')
+            self.msg(target, _(u'line too short.'))
             return
         tot_probability = reduce(operator.mul, probabilities)
         average = sum(probabilities) / len(probabilities)
@@ -489,18 +498,19 @@ class Infobat(ampirc.IrcChildBase):
         try:
             inverse = '%.0f' % (1 / tot_probability)
         except (OverflowError, ZeroDivisionError):
-            inverse = 'inf'
-        self.msg(target,
-            '%0.6f%% chance (1 in %s) across %d probabilities; '
-            '%0.6f%% average, standard deviation %0.6f%%, '
-            '%0.6f%% low, %0.6f%% high.' % (
+            inverse = _(u'inf')
+        self.msg(target, _(
+            u'%0.6f%% chance (1 in %s) across %d probabilities; '
+            u'%0.6f%% average, standard deviation %0.6f%%, '
+            u'%0.6f%% low, %0.6f%% high.') % (
                 tot_probability * 100, inverse,
                 len(probabilities),
                 average * 100, std_dev * 100,
                 min(probabilities) * 100, max(probabilities) * 100))
 
-    def infobat_reload(self, target):
-        self.msg(target, 'Okay!')
+    def infobat_reload(self, target, channel):
+        _ = channel.translate
+        self.msg(target, _(u'Okay!'))
         self.reload()
 
 class InfobatAmpIrcChild(ampirc.AmpIrcChild):
