@@ -5,10 +5,11 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: infobat 0.1r66\n"
+"#-#-#-#-#  infobat.pot (infobat 0.1r67)  #-#-#-#-#\n"
+"Project-Id-Version: infobat 0.1r67\n"
 "Report-Msgid-Bugs-To: habnabit@gmail.com\n"
-"POT-Creation-Date: 2010-05-08 20:10-0300\n"
-"PO-Revision-Date: 2010-05-08 20:21-0300\n"
+"POT-Creation-Date: 2010-05-08 23:42-0300\n"
+"PO-Revision-Date: 2010-05-08 23:45-0300\n"
 "Last-Translator: Clóvis Fabrício Costa <nosklo@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
@@ -27,17 +28,19 @@ msgstr ""
 "por favor, da próxima vez use um site menos terrível que %s (por exemplo "
 "paste.pocoo.org)."
 
-#: irc.py:333
-msgid "%s (repasted for %s)"
-msgstr "%s (recolado para %s)"
+#: infobat/irc.py:346
+#, python-format
+msgid "%(url)s (repasted for %(user)s)"
+msgstr "%(url)s (recolado para %(user)s)"
 
 #: irc.py:343 irc.py:370 irc.py:382
 msgid "Error: %r"
 msgstr "Erro: %r"
 
-#: irc.py:393
-msgid "(... %d lines, entire response in %s ...)"
-msgstr "(... %d linhas, resposta completa em %s ...)"
+#: infobat/irc.py:406
+#, python-format
+msgid "(... %(nlines)d lines, entire response in %(url)s ...)"
+msgstr "(... %(nlines)d linhas, resposta completa em %(url)s ...)"
 
 #: irc.py:406
 msgid "Done."
@@ -75,19 +78,21 @@ msgstr "%d minutos"
 msgid "%d seconds"
 msgstr "%d segundos"
 
-#: irc.py:450
-msgid "%s and %s"
-msgstr "%s e %s"
+#: infobat/irc.py:466
+#, python-format
+msgid "%(group)s and %(last)s"
+msgstr "%(group)s e %(last)s"
 
-#: irc.py:451
+#: infobat/irc.py:470
+#, python-format
 msgid ""
-"I have been online for %s. In that time, I've processed %d characters and "
-"spliced %d chains. Currently, I reference %d chains with %d beginnings (%d "
-"actions)."
+"I have been online for %(time_online)s. In that time, I've processed %"
+"(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
+"reference %(dblen)d chains with %(begin)d beginnings (%(actions)d actions)."
 msgstr ""
-"Eu estive online por %s. Neste tempo, eu processei %d caracteres e gerei %d "
-"cadeias. Faço referência neste momento à %d cadeias com %d inícios (%d "
-"ações)."
+"Eu estive online por %(time_online)s. Neste tempo, eu processei "
+"%(wordcount)d caracteres e gerei %(chaincount)d cadeias. Faço referência "
+"neste momento à %(dblen)d cadeias com %(begin)d inícios (%(actions)d ações)."
 
 #: irc.py:465
 msgid "shakes the psychic black sphere."
@@ -105,14 +110,18 @@ msgstr "linha muito curta."
 msgid "inf"
 msgstr "inf"
 
-#: irc.py:508
+#: infobat/irc.py:513
+#, python-format
 msgid ""
-"%0.6f%% chance (1 in %s) across %d probabilities; %0.6f%% average, standard "
-"deviation %0.6f%%, %0.6f%% low, %0.6f%% high."
+"%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
+"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f%"
+"% low, %(max_prob)0.6f%% high."
 msgstr ""
-"%0.6f%% de chance (uma em %s) em %d probabilidades; média %0.6f%%, desvio "
-"padrão %0.6f%%, %0.6f%% baixo, %0.6f%% alto."
+"%(chance)0.6f%% de chance (uma em %(inverse)s) em %(prob_len)d "
+"probabilidades; média %(avg)0.6f%%, desvio padrão %(deviation)0.6f%%, "
+"mínimo %(min_prob)0.6f%%, máximo %(max_prob)0.6f%%."
 
 #: irc.py:519
 msgid "Okay!"
 msgstr "Certo!"
+
