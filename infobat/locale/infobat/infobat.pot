@@ -5,9 +5,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: infobat 0.1r67\n"
+"Project-Id-Version: infobat 0.1r66\n"
 "Report-Msgid-Bugs-To: habnabit@gmail.com\n"
-"POT-Creation-Date: 2010-05-08 23:42-0300\n"
+"POT-Creation-Date: 2010-05-08 20:16-0700\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -29,97 +29,96 @@ msgstr ""
 
 #: infobat/irc.py:346
 #, python-format
-msgid "%(url)s (repasted for %(user)s)"
+msgid "%s (repasted for %s)"
 msgstr ""
 
-#: infobat/irc.py:357 infobat/irc.py:383 infobat/irc.py:395
+#: infobat/irc.py:356 infobat/irc.py:382 infobat/irc.py:394
 #, python-format
 msgid "Error: %r"
 msgstr ""
 
-#: infobat/irc.py:406
+#: infobat/irc.py:405
 #, python-format
-msgid "(... %(nlines)d lines, entire response in %(url)s ...)"
+msgid "(... %d lines, entire response in %s ...)"
 msgstr ""
 
-#: infobat/irc.py:421
+#: infobat/irc.py:419
 msgid "Done."
 msgstr ""
 
-#: infobat/irc.py:423
+#: infobat/irc.py:421
 msgid "Database not loaded."
 msgstr ""
 
-#: infobat/irc.py:433
+#: infobat/irc.py:431
 msgid "Database unlocked."
 msgstr ""
 
-#: infobat/irc.py:435 infobat/irc.py:444
+#: infobat/irc.py:433 infobat/irc.py:442
 msgid "Database was unlocked."
 msgstr ""
 
-#: infobat/irc.py:442
+#: infobat/irc.py:440
 msgid "Database locked."
 msgstr ""
 
-#: infobat/irc.py:452
+#: infobat/irc.py:450
 #, python-format
 msgid "%d days"
 msgstr ""
 
-#: infobat/irc.py:456
+#: infobat/irc.py:454
 #, python-format
 msgid "%d hours"
 msgstr ""
 
-#: infobat/irc.py:458
+#: infobat/irc.py:456
 #, python-format
 msgid "%d minutes"
 msgstr ""
 
-#: infobat/irc.py:460
+#: infobat/irc.py:458
 #, python-format
 msgid "%d seconds"
 msgstr ""
 
-#: infobat/irc.py:466
+#: infobat/irc.py:464
 #, python-format
-msgid "%(group)s and %(last)s"
+msgid "%s and %s"
 msgstr ""
 
-#: infobat/irc.py:470
+#: infobat/irc.py:465
 #, python-format
 msgid ""
-"I have been online for %(time_online)s. In that time, I've processed %"
-"(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
-"reference %(dblen)d chains with %(begin)d beginnings (%(actions)d actions)."
+"I have been online for %s. In that time, I've processed %d characters and "
+"spliced %d chains. Currently, I reference %d chains with %d beginnings (%d "
+"actions)."
 msgstr ""
 
-#: infobat/irc.py:489
+#: infobat/irc.py:479
 msgid "shakes the psychic black sphere."
 msgstr ""
 
-#: infobat/irc.py:495
+#: infobat/irc.py:485
 #, python-format
 msgid "It says: \"%s\""
 msgstr ""
 
-#: infobat/irc.py:502
+#: infobat/irc.py:492
 msgid "line too short."
 msgstr ""
 
-#: infobat/irc.py:511
+#: infobat/irc.py:501
 msgid "inf"
 msgstr ""
 
-#: infobat/irc.py:513
+#: infobat/irc.py:503
 #, python-format
 msgid ""
-"%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
-"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f%"
-"% low, %(max_prob)0.6f%% high."
+"%0.6f%% chance (1 in %s) across %d probabilities; %0.6f%% average, standard "
+"deviation %0.6f%%, %0.6f%% low, %0.6f%% high."
 msgstr ""
 
-#: infobat/irc.py:528
+#: infobat/irc.py:513
 msgid "Okay!"
 msgstr ""
