@@ -477,7 +477,7 @@ class Infobat(ampirc.IrcChildBase):
                 'dblen': len(self.db),
                 'begin': self.db.start_offset + self.db.actions,
                 'actions': self.db.actions,
-            })
+            }
         self.msg(target, result)
 
     def infobat_divine(self, target, channel, *seed):
