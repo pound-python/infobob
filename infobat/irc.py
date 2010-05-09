@@ -82,7 +82,7 @@ class Infobat(ampirc.IrcChildBase):
                 telnetPort="unix:%s%d.sock" % (
                     conf['misc.manhole.socket_prefix'], os.getpid()),
                 sshPort=None,
-                namespace={'self': self},
+                namespace={'self': self, 'conf': conf},
                 passwd=conf['misc.manhole.passwd_file'],
             ))
             service.startService()
