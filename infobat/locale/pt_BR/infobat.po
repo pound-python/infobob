@@ -97,6 +97,10 @@ msgstr "olha para sua bola de cristal."
 msgid "It says: \"%s\""
 msgstr "Ela diz: \"%s\""
 
+#: infobat/irc.py:492
+msgid "line too short."
+msgstr "linha muito curta."
+
 #: infobat/irc.py:505
 msgid "inf"
 msgstr "inf"
