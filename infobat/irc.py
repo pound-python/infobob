@@ -463,21 +463,21 @@ class Infobat(ampirc.IrcChildBase):
         elif len(timestr) == 1:
             timestr = timestr[0]
         else:
-            timestr = _(u'%(group)s and %(last)s') % {
-                'group': ', '.join(timestr[:-1]),
-                'last': timestr[-1]
-            }
+            timestr = _(u'%(group)s and %(last)s') % dict(
+                group=', '.join(timestr[:-1]),
+                last=timestr[-1],
+            )
         result = _(u"I have been online for %(time_online)s. In that time, "
             u"I've processed %(wordcount)d characters and spliced "
             u"%(chaincount)d chains. Currently, I reference %(dblen)d "
-            u"chains with %(begin)d beginnings (%(actions)d actions).") % {
-                'time_online': timestr,
-                'wordcount': self.db.wordcount,
-                'chaincount': self.db.chaincount,
-                'dblen': len(self.db),
-                'begin': self.db.start_offset + self.db.actions,
-                'actions': self.db.actions,
-            }
+            u"chains with %(begin)d beginnings (%(actions)d actions).") % dict(
+                time_online=timestr,
+                wordcount=self.db.wordcount,
+                chaincount=self.db.chaincount,
+                dblen=len(self.db),
+                begin=self.db.start_offset + self.db.actions,
+                actions=self.db.actions,
+            )
         self.msg(target, result)
 
     def infobat_divine(self, target, channel, *seed):
@@ -513,15 +513,15 @@ class Infobat(ampirc.IrcChildBase):
             u'%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d '
             u'probabilities; %(avg)0.6f%% average, standard deviation '
             u'%(deviation)0.6f%%, %(min_prob)0.6f%% low, %(max_prob)0.6f%% '
-            u'high.') % {
-                'chance': tot_probability * 100,
-                'inverse': inverse,
-                'prob_len': len(probabilities),
-                'avg': average * 100,
-                'deviation': std_dev * 100,
-                'min_prob': min(probabilities) * 100,
-                'max_prob': max(probabilities) * 100,
-            })
+            u'high.') % dict(
+                chance=tot_probability * 100,
+                inverse=inverse,
+                prob_len=len(probabilities),
+                avg=average * 100,
+                deviation=std_dev * 100,
+                min_prob=min(probabilities) * 100,
+                max_prob=max(probabilities) * 100,
+            ))
 
     def infobat_reload(self, target, channel):
         _ = channel.translate
