@@ -1,8 +1,8 @@
 #!/bin/sh
 
-for somedir in infobat/locale/*; do
-    if [ -d $somedir ] ; then
-        mkdir -p $somedir/LC_MESSAGES
-        msgfmt $somedir/infobat.po -o $somedir/LC_MESSAGES/infobat.mo
-    fi
+for pofile in infobat/locale/*/*.po; do
+    domain=$(basename $(dirname $pofile))
+    lang=$(echo $pofile | sed 's:.*/\([a-zA-Z_]*\)\.po:\1:')
+    mkdir -p infobat/locale/$lang/LC_MESSAGES
+    msgfmt $pofile -o infobat/locale/$lang/LC_MESSAGES/$domain.mo
 done
