@@ -9,6 +9,7 @@ from infobat import chains, database, http, util
 from datetime import datetime
 from urllib import urlencode
 from urlparse import urljoin
+import traceback
 import lxml.html
 import operator
 import ampirc
@@ -388,8 +389,15 @@ class Infobat(ampirc.IrcChildBase):
     @defer.inlineCallbacks
     def infobat_exec(self, target, channel, *text):
         _ = channel.translate
+        text = _EXEC_PRELUDE + ' '.join(text)
         try:
-            paste_url = yield self._codepad(_EXEC_PRELUDE + ' '.join(text))
+            compile(text, '<%s>' % self.nickname, 'exec')
+        except BaseException as e:
+            error_msg = traceback.format_exception_only(type(e), e)[-1].strip()
+            self.msg(target, error_msg)
+            return
+        try:
+            paste_url = yield self._codepad(text)
             page, ign = yield http.get_page(paste_url)
         except:
             self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
