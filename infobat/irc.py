@@ -324,11 +324,14 @@ class Infobat(ampirc.IrcChildBase):
 
     @defer.inlineCallbacks
     def repaste(self, target, user, pastes, _):
+        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
+        try:
+            repasted_url = yield self.dbpool.get_repaste(urls)
+        except database.TooSoonError:
+            return
         which_bin = ', '.join(set(bin for base, pfix, bin, p_id in pastes))
         self.notice(user, _(u'in the future, please use a less awful pastebin '
             u'(e.g. paste.pocoo.org) instead of %s.') % which_bin)
-        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
-        repasted_url = yield self.dbpool.get_repaste(urls)
         if repasted_url is None:
             defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
                 for base, prefix, bin, paste_id in pastes]

@@ -8,6 +8,9 @@ def interaction(func):
         return self.dbpool.runInteraction(partial(func, self), *a, **kw)
     return wrap
 
+class TooSoonError(Exception):
+    pass
+
 class InfobatDatabaseRunner(object):
     def __init__(self):
         self.dbpool = adbapi.ConnectionPool(
@@ -34,21 +37,27 @@ class InfobatDatabaseRunner(object):
     @interaction
     def get_repaste(self, txn, orig_url):
         txn.execute("""
-            SELECT repasted_url
+            SELECT repasted_url, time_of
             FROM   repastes
             WHERE  orig_url = ?
         """, (orig_url,))
         row = txn.fetchall()
         if row:
-            return row[0][0].encode()
+            url, time_of = row[0]
+            delta = time.time() - time_of
+            if delta > 60*60*24*7:
+                return None
+            elif delta < 10:
+                raise TooSoonError()
+            return url.encode()
         return None
     
     @interaction
     def add_repaste(self, txn, orig_url, repasted_url):
         txn.execute("""
             REPLACE INTO repastes
-            VALUES     (?, ?)
-        """, (orig_url, repasted_url))
+            VALUES     (?, ?, ?)
+        """, (orig_url, repasted_url, time.time()))
     
     @interaction
     def get_pastebins(self, txn):

@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS lol_offenses (
 
 CREATE TABLE IF NOT EXISTS repastes (
     orig_url TEXT PRIMARY KEY,
-    repasted_url TEXT
+    repasted_url TEXT NOT NULL,
+    time_of INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS pastebins (
