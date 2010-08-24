@@ -35,7 +35,8 @@
                 ["allow", "all"],                
                 ["deny", "divine", "lol", "repaste"]
             ],
-            "flood_control": [3, 2]
+            "flood_control": [3, 2],
+            "default_ban_time": 28800
         },
         "#python-offtopic": {
             "commands": [

@@ -12,6 +12,7 @@ _channel_defaults = dict(
     commands=(),
     flood_control=None,
     key=None,
+    default_ban_time=28800,
 )
 
 class Channel(object):

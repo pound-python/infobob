@@ -1,26 +1,133 @@
-# English translations for keyword-formatting package.
+# English translations for infobat package.
 # This file is put in the public domain.
 # Automatically generated, 2010.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: infobat 0.1r72\n"
+"Project-Id-Version: infobat 0.1r78\n"
 "Report-Msgid-Bugs-To: habnabit@gmail.com\n"
-"POT-Creation-Date: 2010-05-09 01:32-0300\n"
-"PO-Revision-Date: 2010-05-09 01:32-0300\n"
+"POT-Creation-Date: 2010-08-24 16:24-0700\n"
+"PO-Revision-Date: 2010-08-24 16:24-0700\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
+"Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=ASCII\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: infobat/irc.py:245
+#: infobat/irc.py:380
 #, python-format
 msgid "no triggers in %s."
 msgstr "no triggers in %s."
 
-#: infobat/irc.py:328
+#: infobat/irc.py:474
+#, python-format
+msgid ""
+"fyi: %(who)s set \"+%(mode)s %(mask)s\" on %(channel)s %(when)s, which was "
+"set to expire %(expire)s."
+msgstr ""
+"fyi: %(who)s set \"+%(mode)s %(mask)s\" on %(channel)s %(when)s, which was "
+"set to expire %(expire)s."
+
+#: infobat/irc.py:486
+#, python-format
+msgid "fyi: nobody on %(channel)s matches the mask %(mask)r"
+msgstr "fyi: nobody on %(channel)s matches the mask %(mask)r"
+
+#: infobat/irc.py:494
+#, python-format
+msgid ""
+"fyi: more than 5 nicks on %(channel)s match the mask %(mask)r, including: "
+"%(affected)s"
+msgstr ""
+"fyi: more than 5 nicks on %(channel)s match the mask %(mask)r, including: "
+"%(affected)s"
+
+#: infobat/irc.py:521
+msgid "[no account]"
+msgstr "[no account]"
+
+#: infobat/irc.py:527
+#, python-format
+msgid ""
+"fyi: more than one account on %(channel)s matches the mask %(mask)r, "
+"including: %(affected)s"
+msgstr ""
+"fyi: more than one account on %(channel)s matches the mask %(mask)r, "
+"including: %(affected)s"
+
+#: infobat/irc.py:533
+msgid ""
+"reply with a nickname to disambiguate the mask, or \"(none)\" (without "
+"quotes, with parentheses) to ignore this warning."
+msgstr ""
+"reply with a nickname to disambiguate the mask, or \"(none)\" (without "
+"quotes, with parentheses) to ignore this warning."
+
+#: infobat/irc.py:537 infobat/irc.py:554
+msgid "(none)"
+msgstr "(none)"
+
+#: infobat/irc.py:543
+msgid "timeout; not disambiguating."
+msgstr "timeout; not disambiguating."
+
+#: infobat/irc.py:550
+#, python-format
+msgid "%(msg)r is not in %(correct)r"
+msgstr "%(msg)r is not in %(correct)r"
+
+#: infobat/irc.py:562 infobat/irc.py:591
+#, python-format
+msgid "updating %(old)r to %(new)r."
+msgstr "updating %(old)r to %(new)r."
+
+#: infobat/irc.py:577
+#, python-format
+msgid ""
+"the mask %(mask)r on %(channel)s matches only one account (%(account)s). "
+"change this to a per-account mask? (y/n)"
+msgstr ""
+"the mask %(mask)r on %(channel)s matches only one account (%(account)s). "
+"change this to a per-account mask? (y/n)"
+
+#: infobat/irc.py:587
+msgid "timeout; not changing to per-account mask."
+msgstr "timeout; not changing to per-account mask."
+
+#: infobat/irc.py:606
+#, python-format
+msgid ""
+"by default, setting \"+%(mode)s %(mask)s\" on %(channel)s will expire after "
+"%(delta)s. reply with a time string or \"never\" to change it."
+msgstr ""
+"by default, setting \"+%(mode)s %(mask)s\" on %(channel)s will expire after "
+"%(delta)s. reply with a time string or \"never\" to change it."
+
+#: infobat/irc.py:617
+msgid "timeout; keeping default expiration time."
+msgstr "timeout; keeping default expiration time."
+
+#: infobat/irc.py:619 infobat/util.py:61
+msgid "never"
+msgstr "never"
+
+#: infobat/irc.py:627
+#, python-format
+msgid "invalid time string: %(string)r"
+msgstr "invalid time string: %(string)r"
+
+#: infobat/irc.py:635
+msgid "now never expiring."
+msgstr "now never expiring."
+
+#: infobat/irc.py:640
+#, python-format
+msgid "now expiring after %(delta)s."
+msgstr "now expiring after %(delta)s."
+
+#: infobat/irc.py:691
 #, python-format
 msgid ""
 "in the future, please use a less awful pastebin (e.g. paste.pocoo.org) "
@@ -29,105 +136,110 @@ msgstr ""
 "in the future, please use a less awful pastebin (e.g. paste.pocoo.org) "
 "instead of %s."
 
-#: infobat/irc.py:346
+#: infobat/irc.py:707
 #, python-format
 msgid "%(url)s (repasted for %(user)s)"
 msgstr "%(url)s (repasted for %(user)s)"
 
-#: infobat/irc.py:357 infobat/irc.py:383 infobat/irc.py:395
+#: infobat/irc.py:718 infobat/irc.py:744 infobat/irc.py:756
 #, python-format
 msgid "Error: %r"
 msgstr "Error: %r"
 
-#: infobat/irc.py:406
+#: infobat/irc.py:767
 #, python-format
 msgid "(... %(nlines)d lines, entire response in %(url)s ...)"
 msgstr "(... %(nlines)d lines, entire response in %(url)s ...)"
 
-#: infobat/irc.py:421
+#: infobat/irc.py:782
 msgid "Done."
 msgstr "Done."
 
-#: infobat/irc.py:423
+#: infobat/irc.py:784
 msgid "Database not loaded."
 msgstr "Database not loaded."
 
-#: infobat/irc.py:433
+#: infobat/irc.py:794
 msgid "Database unlocked."
 msgstr "Database unlocked."
 
-#: infobat/irc.py:435 infobat/irc.py:444
+#: infobat/irc.py:796 infobat/irc.py:805
 msgid "Database was unlocked."
 msgstr "Database was unlocked."
 
-#: infobat/irc.py:442
+#: infobat/irc.py:803
 msgid "Database locked."
 msgstr "Database locked."
 
-#: infobat/irc.py:452
-#, python-format
-msgid "%d days"
-msgstr "%d days"
-
-#: infobat/irc.py:456
-#, python-format
-msgid "%d hours"
-msgstr "%d hours"
-
-#: infobat/irc.py:458
-#, python-format
-msgid "%d minutes"
-msgstr "%d minutes"
-
-#: infobat/irc.py:460
-#, python-format
-msgid "%d seconds"
-msgstr "%d seconds"
-
-#: infobat/irc.py:466
-#, python-format
-msgid "%(group)s and %(last)s"
-msgstr "%(group)s and %(last)s"
-
-#: infobat/irc.py:470
+#: infobat/irc.py:812
 #, python-format
 msgid ""
-"I have been online for %(time_online)s. In that time, I've processed %"
-"(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
+"I have been online for %(time_online)s. In that time, I've processed "
+"%(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
 "reference %(dblen)d chains with %(begin)d beginnings (%(actions)d actions)."
 msgstr ""
-"I have been online for %(time_online)s. In that time, I've processed %"
-"(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
+"I have been online for %(time_online)s. In that time, I've processed "
+"%(wordcount)d characters and spliced %(chaincount)d chains. Currently, I "
 "reference %(dblen)d chains with %(begin)d beginnings (%(actions)d actions)."
 
-#: infobat/irc.py:489
+#: infobat/irc.py:831
 msgid "shakes the psychic black sphere."
 msgstr "shakes the psychic black sphere."
 
-#: infobat/irc.py:495
+#: infobat/irc.py:837
 #, python-format
 msgid "It says: \"%s\""
 msgstr "It says: \"%s\""
 
-#: infobat/irc.py:502
+#: infobat/irc.py:844
 msgid "line too short."
 msgstr "line too short."
 
-#: infobat/irc.py:511
+#: infobat/irc.py:853
 msgid "inf"
 msgstr "inf"
 
-#: infobat/irc.py:513
+#: infobat/irc.py:855
 #, python-format
 msgid ""
 "%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
-"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f%"
-"% low, %(max_prob)0.6f%% high."
+"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f"
+"%% low, %(max_prob)0.6f%% high."
 msgstr ""
 "%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
-"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f%"
-"% low, %(max_prob)0.6f%% high."
+"%(avg)0.6f%% average, standard deviation %(deviation)0.6f%%, %(min_prob)0.6f"
+"%% low, %(max_prob)0.6f%% high."
 
-#: infobat/irc.py:528
+#: infobat/irc.py:870
 msgid "Okay!"
 msgstr "Okay!"
+
+#: infobat/util.py:22
+#, python-format
+msgid "%d days"
+msgstr "%d days"
+
+#: infobat/util.py:26
+#, python-format
+msgid "%d hours"
+msgstr "%d hours"
+
+#: infobat/util.py:28
+#, python-format
+msgid "%d minutes"
+msgstr "%d minutes"
+
+#: infobat/util.py:30
+#, python-format
+msgid "%d seconds"
+msgstr "%d seconds"
+
+#: infobat/util.py:36
+#, python-format
+msgid "%(group)s and %(last)s"
+msgstr "%(group)s and %(last)s"
+
+#: infobat/util.py:64
+#, python-format
+msgid "at %(when)s"
+msgstr "at %(when)s"
