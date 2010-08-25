@@ -596,8 +596,8 @@ class Infobat(ampirc.IrcChildBase):
             timedelta(seconds=channel_obj.default_ban_time))
         self.notice(nick,
             _(u'by default, setting "+%(mode)s %(mask)s" on %(channel)s will '
-            u'expire after %(delta)s. reply with a time string or "never" to '
-            u'change it.') % dict(
+            u'expire after %(delta)s. to change it, reply with a time string '
+            u'or "never". (reply with "help" for help.)') % dict(
                 mode=mode, mask=mask, channel=channel, delta=timestr,
             )
         )
@@ -608,7 +608,16 @@ class Infobat(ampirc.IrcChildBase):
                 self.notice(nick,
                     _(u'timeout; keeping default expiration time.'))
                 break
-            if msg == _(u'never'):
+            if msg == _(u'help'):
+                ready, = yield self.waitForPrivmsgFrom(nick)
+                self.notice(nick,
+                    _(u'a time string is one or more space-delimited numbers, '
+                    u'suffixed with one of "s", "m", "h", "d", or "w" to '
+                    u'indicate seconds, minutes, hours, days, and weeks, '
+                    u'respectively. e.g. "1w 2d 12h"')
+                )
+                continue
+            elif msg == _(u'never'):
                 delta = None
             else:
                 try:
