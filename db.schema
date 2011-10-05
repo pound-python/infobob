@@ -4,9 +4,32 @@ CREATE TABLE IF NOT EXISTS lol_offenses (
     PRIMARY KEY(username, time_of)
 );
 
+CREATE TABLE IF NOT EXISTS bans (
+    channel TEXT NOT NULL,
+    mask TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    set_at INTEGER NOT NULL,
+    set_by TEXT NOT NULL,
+    expire_at INTEGER,
+    unset_at INTEGER,
+    unset_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_hosts (
+    nick TEXT PRIMARY KEY,
+    host TEXT
+);
+
+CREATE TABLE IF NOT EXISTS channel_users (
+    nick TEXT REFERENCES user_hosts(nick),
+    channel TEXT,
+    PRIMARY KEY(nick, channel)
+);
+
 CREATE TABLE IF NOT EXISTS repastes (
     orig_url TEXT PRIMARY KEY,
-    repasted_url TEXT
+    repasted_url TEXT NOT NULL,
+    time_of INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS pastebins (

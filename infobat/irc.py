@@ -1,22 +1,27 @@
-from twisted.internet import reactor, protocol, task, defer, threads
-from twisted.enterprise import adbapi
-from twisted.protocols import amp
-from twisted.python import log, reflect
+from twisted.words.protocols import irc
+from twisted.application import internet
+from twisted.internet import reactor, defer, threads, error
+from twisted.python import log
 from twisted.web import xmlrpc
 from infobat.redent import redent
 from infobat.config import conf
 from infobat import chains, database, http, util
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib import urlencode
 from urlparse import urljoin
+import collections
+import itertools
+import traceback
 import lxml.html
 import operator
 import ampirc
 import random
 import time
 import sys
-import os
 import re
+
+irc.numeric_to_symbolic['330'] = 'RPL_WHOISACCOUNT'
+irc.symbolic_to_numeric['RPL_WHOISACCOUNT'] = '330'
 
 _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
 _lol_messages = [
@@ -34,12 +39,13 @@ _etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
 
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
-    r'|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
+    r'|ospaste\.com|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
 
 _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
+    'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
 }
 
 for ep in _etherpad_like:
@@ -71,23 +77,19 @@ class Infobat(ampirc.IrcChildBase):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
         self.nickname = conf['irc.nickname'].encode()
         self.max_countdown = conf['database.dbm.sync_time']
-        self.dbpool = database.InfobatDatabaseRunner()
+        self.dbpool = conf.dbpool
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
-        if (conf['misc.manhole.socket_prefix'] is not None
-                and conf['misc.manhole.passwd_file']):
-            from twisted.conch.manhole_tap import makeService
-            self.manhole_service = service = makeService(dict(
-                telnetPort="unix:%s%d.sock" % (
-                    conf['misc.manhole.socket_prefix'], os.getpid()),
-                sshPort=None,
-                namespace={'self': self},
-                passwd=conf['misc.manhole.passwd_file'],
-            ))
-            service.startService()
-            reactor.addSystemEventTrigger(
-                'before', 'shutdown', service.stopService)
+        self.channel_collation = collections.defaultdict(dict)
+        self.most_recent_bans = {}
+        self._channel_update_deferred = defer.succeed(None)
+        self._whois_collation = {}
+        self._whois_deferred = None
+        self._whois_queue = defer.DeferredSemaphore(1)
+        self._waiting_on_queue = collections.defaultdict(
+            lambda: defer.DeferredSemaphore(1))
+        self._waiting_on_deferred = {}
 
     def autojoinChannels(self):
         for channel in conf['irc.autojoin']:
@@ -101,6 +103,7 @@ class Infobat(ampirc.IrcChildBase):
         else:
             self.autojoinChannels()
         self.startTimer('serverPing', 60)
+        self.startTimer('expireBans', 60, alsoRunImmediately=False)
 
     def protocolReady(self, first_time=False):
         self._op_deferreds = dict.fromkeys(self.is_opped, defer.succeed(None))
@@ -136,6 +139,105 @@ class Infobat(ampirc.IrcChildBase):
 
     def kickedFrom(self, channel, kicker, message):
         self.join(channel)
+
+    @defer.inlineCallbacks
+    def whois(self, nickname, server=None):
+        yield self._whois_queue.acquire()
+        try:
+            self._whois_deferred = defer.Deferred()
+            ampirc.IrcChildBase.whois(self, nickname, server)
+            ret = yield self._whois_deferred
+            self._whois_deferred = None
+            defer.returnValue(ret)
+        finally:
+            self._whois_queue.release()
+
+    def irc_RPL_WHOISUSER(self, prefix, params):
+        c = self._whois_collation
+        c['nick'], c['user'], c['host'] = params[1:4]
+        c['realname'] = params[-1]
+
+    def irc_RPL_WHOISACCOUNT(self, prefix, params):
+        self._whois_collation['accountname'] = params[2]
+
+    def irc_RPL_ENDOFWHOIS(self, prefix, params):
+        ret, self._whois_collation = self._whois_collation, {}
+        self._whois_deferred.callback(ret)
+
+    def who(self, target):
+        self.sendLine('WHO %s' % (target,))
+
+    def joined(self, channel):
+        self.who(channel)
+
+    def irc_RPL_WHOREPLY(self, prefix, params):
+        channel, user, host, _, nick = params[1:6]
+        self.channel_collation[channel][nick] = '%s@%s' % (user, host)
+
+    def irc_RPL_ENDOFWHO(self, prefix, params):
+        channel = params[1]
+        self.fillChannel(self.channel_collation.pop(channel), channel)
+
+    def _blockChannelUpdates(self):
+        if self._channel_update_deferred.called:
+            self._channel_update_deferred = defer.Deferred()
+
+    def _unblockChannelUpdates(self):
+        if not self._channel_update_deferred.called:
+            self._channel_update_deferred.callback(None)
+
+    @defer.inlineCallbacks
+    def fillChannel(self, users, channel):
+        yield self._channel_update_deferred
+        yield self.dbpool.set_users_in_channel(users, channel)
+
+    @defer.inlineCallbacks
+    def addNick(self, nick, host, channel):
+        yield self._channel_update_deferred
+        yield self.dbpool.add_user_to_channel(nick, host, channel)
+
+    @defer.inlineCallbacks
+    def removeNick(self, nick, channel=None):
+        yield self._channel_update_deferred
+        if channel is None:
+            yield self.dbpool.remove_nick_from_channels(nick)
+        else:
+            yield self.dbpool.remove_nick_from_channel(nick, channel)
+
+    @defer.inlineCallbacks
+    def renameNick(self, oldname, newname):
+        yield self._channel_update_deferred
+        yield self.dbpool.rename_nick(oldname, newname)
+
+    def irc_JOIN(self, prefix, params):
+        """
+        Called when a user joins a channel.
+        """
+        nick, _, host = prefix.partition('!')
+        channel = params[-1]
+        if nick == self.nickname:
+            self.joined(channel)
+        else:
+            self.userJoined(prefix, channel)
+
+    def userJoined(self, user, channel):
+        nick, _, host = user.partition('!')
+        self.addNick(nick, host, channel)
+
+    def userLeft(self, user, channel):
+        nick, _, host = user.partition('!')
+        self.removeNick(nick, channel)
+
+    def userQuit(self, user, quitMessage):
+        nick, _, host = user.partition('!')
+        self.removeNick(nick)
+
+    def userKicked(self, kickee, channel, kicker, message):
+        nick, _, host = kickee.partition('!')
+        self.removeNick(nick, channel)
+
+    def userRenamed(self, oldname, newname):
+        self.renameNick(oldname, newname)
 
     def connectionLost(self, reason):
         if self.db:
@@ -179,35 +281,35 @@ class Infobat(ampirc.IrcChildBase):
         if self.db is None:
             return
         self.db.learn(self.sanitize_learn_input(string), action)
-       
+
     def sanitize_learn_input(self, string):
         """Remove extraneous/irrelevant data from input to markov chain
-        
+
         - remove nickname prefixes: "nick: foo bar" -> "foo bar"
-        
+
         """
         # channel is included for future use, e.g. in checking the channel
         # username list
-        
+
         # doing more is a good idea?
-        
+
         # TODO: use real usernames from the nick list
         # idea: handle "nick1, nick2: thanks!"
         # idea: handle obviously technical data like URIs. Too hard? heheh.
-        
+
         nick_regex = (r'(?P<nick>[A-Za-z\x5b-\x60\x7b-\x7d]'
             r'[0-9A-Za-z\x5b-\x60\x7b-\x7d\-]*)') # RFC2812 2.3.1 , extended
         regex = re.compile(nick_regex + r'\s*(?P<sep>:)\s*(?P<message>.*)')
-        
+
         match = regex.match(string)
-        
+
         if match is None:
             sanitized = string
         else:
             # in future, do elif to check if the nick group is actually used
             # in the channel
             sanitized = match.group('message')
-        
+
         return sanitized
 
     def action(self, user, channel, message):
@@ -215,24 +317,42 @@ class Infobat(ampirc.IrcChildBase):
             return
         if channel == self.nickname:
             log.msg('privaction: * %s %s' % (user, message))
-            target = user
             channel_obj = conf.channel('privmsg')
         else:
-            target = channel
             channel_obj = conf.channel(channel)
         if channel != self.nickname and channel_obj.is_usable('chain_learn'):
             self.learn(message, True)
 
+    @defer.inlineCallbacks
+    def waitForPrivmsgFrom(self, nick, waitFor=30):
+        semaphore = self._waiting_on_queue[nick]
+        yield semaphore.acquire()
+        d = self._waiting_on_deferred[nick] = defer.Deferred()
+        timeout = reactor.callLater(waitFor, d.errback, error.TimeoutError())
+        def _release(r):
+            if timeout.active():
+                timeout.cancel()
+            semaphore.release()
+            return r
+        d.addBoth(_release)
+        defer.returnValue((d,))
+
     def privmsg(self, user, channel, message):
         learn_this = channel != '*'
         if (not self.identified and user.lower().startswith('nickserv!') and
-                'identified' in message):
+                ('identified' in message or 'recognized' in message)):
             self.identified = True
             self.autojoinChannels()
         if not user: return
         user = user.split('!', 1)[0]
-        if user.lower() in ('nickserv', 'chanserv', 'memoserv'): return
+        if user.lower() in ('nickserv', 'chanserv', 'memoserv',
+                self.nickname.lower()):
+            return
         if channel == self.nickname:
+            d = self._waiting_on_deferred.pop(user, None)
+            if d is not None:
+                d.callback(message)
+                return
             log.msg('privmsg from %s: %s' % (user, message))
             target = user
             channel_obj = conf.channel('privmsg')
@@ -274,7 +394,7 @@ class Infobat(ampirc.IrcChildBase):
                         result = user + ', ' + result
                     self.msg(target, result)
 
-        if (learn_this and channel != self.nickname 
+        if (learn_this and channel != self.nickname
                 and channel_obj.is_usable('chain_learn')):
             self.learn(message)
 
@@ -295,9 +415,252 @@ class Infobat(ampirc.IrcChildBase):
                 # XXX: Ugly hack since is_opped is mutable.
                 self.is_opped = self.is_opped
 
+            elif mode in ('b', 'q'):
+                self.updateBan(user, channel, set, mode, arg)
+
+    @defer.inlineCallbacks
+    def updateBan(self, user, channel, mode_set, mode, mask):
+        channel_obj = conf.channel(channel)
+        if not channel_obj.have_ops:
+            return
+        _ = channel_obj.translate
+
+        nick, _x, host = user.partition('!')
+        self._blockChannelUpdates()
+        try:
+            if mode_set:
+                if nick != self.nickname:
+                    yield self.dbpool.add_ban(channel, user, mask, mode)
+            else:
+                not_expired = yield self.dbpool.remove_ban(
+                    channel, user, mask, mode)
+            if (not mode_set and not not_expired) or nick == self.nickname:
+                return
+            elif mask.startswith('$'):
+                others = None
+            elif mode_set:
+                others = yield self.dbpool.check_mask(channel, mask)
+        finally:
+            self._unblockChannelUpdates()
+
+        if not mode_set:
+            if not_expired:
+                set_by, set_at, expire_at = not_expired[0]
+                set_nick, _x, set_host = set_by.partition('!')
+                self.notice(nick,
+                    _(u'fyi: %(who)s set "+%(mode)s %(mask)s" on %(channel)s '
+                    u'%(when)s, which was set to expire %(expire)s.') % dict(
+                        who=set_nick, mode=mode, mask=mask, channel=channel,
+                        when=util.ctime(_, set_at),
+                        expire=util.ctime(_, expire_at),
+                    )
+                )
+            return
+
+        if others is not None:
+            if not others:
+                self.notice(nick,
+                    _(u'fyi: nobody on %(channel)s matches the mask '
+                    u'%(mask)r') % dict(
+                        channel=channel, mask=mask,
+                    )
+                )
+
+            elif len(others) > 5:
+                self.notice(nick,
+                    _(u'fyi: more than 5 nicks on %(channel)s match the mask '
+                    u'%(mask)r, including: %(affected)s') % dict(
+                        channel=channel, mask=mask,
+                        affected=', '.join(others[:5]),
+                    )
+                )
+
+            else:
+                others_by_account = collections.defaultdict(list)
+                info_by_nick = {}
+                for o_nick in others:
+                    info = yield self.whois(o_nick)
+                    others_by_account[info.get('accountname')].append(info)
+                    info_by_nick[o_nick] = info
+                # Fetch others_by_account[None] so that it'll always be
+                # included in len(others_by_account), and we can always take
+                # its length - 1.
+                n_affected_nicks = (
+                    len(others_by_account[None]) + len(others_by_account) - 1)
+
+                if n_affected_nicks > 1 and len(others_by_account) > 1:
+                    affected = ', '.join(
+                        '%s (%s)' % (
+                            account if account is not None
+                                else _(u'[no account]'),
+                            ', '.join(info['nick'] for info in infos)
+                        )
+                        for account, infos in others_by_account.iteritems())
+                    ready, = yield self.waitForPrivmsgFrom(nick)
+                    self.notice(nick,
+                        _(u'fyi: more than one account on %(channel)s matches '
+                        u'the mask %(mask)r, including: %(affected)s') % dict(
+                            channel=channel, mask=mask, affected=affected,
+                        )
+                    )
+                    self.notice(nick,
+                        _(u'reply with a nickname to disambiguate the mask, '
+                        u'or "(none)" (without quotes, with parentheses) to '
+                        u'ignore this warning.')
+                    )
+                    correct = set(info_by_nick) | set([_(u'(none)')])
+                    while True:
+                        try:
+                            msg = yield ready
+                        except error.TimeoutError:
+                            self.notice(nick,
+                                _(u'timeout; not disambiguating.'))
+                            msg = None
+                            break
+                        if msg in correct:
+                            break
+                        ready, = yield self.waitForPrivmsgFrom(nick)
+                        self.notice(nick,
+                            _(u'%(msg)r is not in %(correct)r') % dict(
+                                msg=msg, correct=correct,
+                            )
+                        )
+                    if msg is not None and msg != _(u'(none)'):
+                        yield self.ensureOps(channel)
+                        info = info_by_nick[msg]
+                        if 'accountname' in info:
+                            new_mask = '$a:%(accountname)s' % info
+                        else:
+                            new_mask = '%(nick)s!*@*' % info
+                        self.notice(nick,
+                            _(u'updating %(old)r to %(new)r.') % dict(
+                                old=mask, new=new_mask,
+                            )
+                        )
+                        self.mode(channel, True, mode, mask=new_mask)
+                        self.mode(channel, False, mode, mask=mask)
+                        yield self.dbpool.add_ban(
+                            channel, user, new_mask, mode)
+                        mask = new_mask
+
+                elif n_affected_nicks == 1 and not others_by_account[None]:
+                    account, = (account for account in others_by_account
+                        if account is not None)
+                    ready, = yield self.waitForPrivmsgFrom(nick)
+                    self.notice(nick,
+                        _(u'the mask %(mask)r on %(channel)s matches only one '
+                        u'account (%(account)s). change this to a per-account '
+                        u'mask? (y/n)') % dict(
+                            mask=mask, channel=channel, account=account,
+                        )
+                    )
+                    try:
+                        msg = yield ready
+                    except error.TimeoutError:
+                        self.notice(nick,
+                            _(u'timeout; not changing to per-account mask.'))
+                    else:
+                        if msg.lower().startswith('y'):
+                            yield self.ensureOps(channel)
+                            new_mask = '$a:%s' % account
+                            self.notice(nick,
+                                _(u'updating %(old)r to %(new)r.') % dict(
+                                    old=mask, new=new_mask,
+                                )
+                            )
+                            self.mode(channel, True, mode, mask=new_mask)
+                            self.mode(channel, False, mode, mask=mask)
+                            yield self.dbpool.add_ban(
+                                channel, user, new_mask, mode)
+                            mask = new_mask
+
+        ready, = yield self.waitForPrivmsgFrom(nick)
+        timestr = util.delta_to_string(_,
+            timedelta(seconds=channel_obj.default_ban_time))
+        self.notice(nick,
+            _(u'by default, setting "+%(mode)s %(mask)s" on %(channel)s will '
+            u'expire after %(delta)s. to change it, reply with a time string '
+            u'or "never". (reply with "help" for help.)') % dict(
+                mode=mode, mask=mask, channel=channel, delta=timestr,
+            )
+        )
+        while True:
+            try:
+                msg = yield ready
+            except error.TimeoutError:
+                self.notice(nick,
+                    _(u'timeout; keeping default expiration time.'))
+                break
+            if msg == _(u'help'):
+                ready, = yield self.waitForPrivmsgFrom(nick)
+                self.notice(nick,
+                    _(u'a time string is one or more space-delimited numbers, '
+                    u'suffixed with one of "s", "m", "h", "d", or "w" to '
+                    u'indicate seconds, minutes, hours, days, and weeks, '
+                    u'respectively. e.g. "1w 2d 12h"')
+                )
+                continue
+            elif msg == _(u'never'):
+                delta = None
+            else:
+                try:
+                    delta = util.parse_time_string(msg)
+                except ValueError:
+                    ready, = yield self.waitForPrivmsgFrom(nick)
+                    self.notice(nick,
+                        _(u'invalid time string: %(string)r') % dict(
+                            string=msg
+                        )
+                    )
+                    continue
+            yield self.dbpool.update_ban_expiration(channel, mask, mode, delta)
+            if delta is None:
+                self.notice(nick,
+                    _(u'now never expiring.')
+                )
+            else:
+                timestr = util.delta_to_string(_, timedelta(seconds=delta))
+                self.notice(nick,
+                    _(u'now expiring after %(delta)s.') % dict(
+                        delta=timestr,
+                    )
+                )
+            break
+
+        ready, = yield self.waitForPrivmsgFrom(nick, 60*5)
+        self.notice(nick,
+            _(u'what is the reason for setting "+%(mode)s %(mask)s" on '
+            u'%(channel)s? enter a short sentence or two.') % dict(
+                mode=mode, mask=mask, channel=channel
+            )
+        )
+        try:
+            reason = yield ready
+        except error.TimeoutError:
+            self.notice(nick,
+                _(u'no reason for ban set.')
+            )
+        else:
+            yield self.dbpool.set_ban_reason(channel, mask, mode, reason)
+            self.notice(nick,
+                _(u'ban reason now %(reason)r.') % dict(
+                    reason=reason,
+                )
+            )
+
     def ampircTimer_deopSelf(self):
         for channel in self.is_opped:
             self.mode(channel, False, 'o', user=self.nickname)
+
+    @defer.inlineCallbacks
+    def ampircTimer_expireBans(self):
+        expired = yield self.dbpool.get_expired_bans()
+        for channel, it in itertools.groupby(expired, operator.itemgetter(0)):
+            if not conf.channel(channel).have_ops:
+                continue
+            yield self.ensureOps(channel)
+            for _, mask, mode in it:
+                self.mode(channel, False, mode, mask=mask)
 
     @defer.inlineCallbacks
     def do_lol(self, nick, channel, _):
@@ -324,11 +687,14 @@ class Infobat(ampirc.IrcChildBase):
 
     @defer.inlineCallbacks
     def repaste(self, target, user, pastes, _):
+        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
+        try:
+            repasted_url = yield self.dbpool.get_repaste(urls)
+        except database.TooSoonError:
+            return
         which_bin = ', '.join(set(bin for base, pfix, bin, p_id in pastes))
         self.notice(user, _(u'in the future, please use a less awful pastebin '
             u'(e.g. paste.pocoo.org) instead of %s.') % which_bin)
-        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
-        repasted_url = yield self.dbpool.get_repaste(urls)
         if repasted_url is None:
             defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
                 for base, prefix, bin, paste_id in pastes]
@@ -388,8 +754,15 @@ class Infobat(ampirc.IrcChildBase):
     @defer.inlineCallbacks
     def infobat_exec(self, target, channel, *text):
         _ = channel.translate
+        text = _EXEC_PRELUDE + ' '.join(text)
         try:
-            paste_url = yield self._codepad(_EXEC_PRELUDE + ' '.join(text))
+            compile(text, '<%s>' % self.nickname, 'exec')
+        except BaseException as e:
+            error_msg = traceback.format_exception_only(type(e), e)[-1].strip()
+            self.msg(target, error_msg)
+            return
+        try:
+            paste_url = yield self._codepad(text)
             page, ign = yield http.get_page(paste_url)
         except:
             self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
@@ -447,26 +820,7 @@ class Infobat(ampirc.IrcChildBase):
         _ = channel.translate
         if self.db is None: return
         delta = datetime.now() - self.amp.parent_start
-        timestr = []
-        if delta.days:
-            timestr.append(_(u'%d days') % delta.days)
-        minutes, seconds = divmod(delta.seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            timestr.append(_(u'%d hours') % hours)
-        if minutes:
-            timestr.append(_(u'%d minutes') % minutes)
-        if seconds:
-            timestr.append(_(u'%d seconds') % seconds)
-        if not timestr:
-            timestr = u''
-        elif len(timestr) == 1:
-            timestr = timestr[0]
-        else:
-            timestr = _(u'%(group)s and %(last)s') % dict(
-                group=', '.join(timestr[:-1]),
-                last=timestr[-1],
-            )
+        timestr = util.delta_to_string(_, delta)
         result = _(u"I have been online for %(time_online)s. In that time, "
             u"I've processed %(wordcount)d characters and spliced "
             u"%(chaincount)d chains. Currently, I reference %(dblen)d "
@@ -535,7 +889,28 @@ class InfobatAmpIrcChild(ampirc.AmpIrcChild):
         with open(config_loc) as cfgFile:
             conf.load(cfgFile)
         self.parent_start = datetime.strptime(start_time, util.ISOFORMAT)
+        conf.dbpool = database.InfobatDatabaseRunner()
         ampirc.AmpIrcChild.__init__(self)
+        if (conf['misc.manhole.socket_prefix'] is not None
+                and conf['misc.manhole.passwd_file']):
+            from twisted.conch.manhole_tap import makeService
+            service = makeService(dict(
+                telnetPort="unix:%s%d.sock" % (
+                    conf['misc.manhole.socket_prefix'], time.time() * 10),
+                sshPort=None,
+                namespace={'self': self, 'conf': conf},
+                passwd=conf['misc.manhole.passwd_file'],
+            ))
+            service.startService()
+            reactor.addSystemEventTrigger(
+                'before', 'shutdown', service.stopService)
+
+        service = internet.TCPServer(conf['web.port'],
+            http.makeSite(conf.dbpool),
+            interface='127.0.0.1')
+        service.startService()
+        reactor.addSystemEventTrigger(
+            'before', 'shutdown', service.stopService)
 
 class InfobatFactory(ampirc.AmpIrcFactory):
     ampChildProtocol = InfobatAmpIrcChild
