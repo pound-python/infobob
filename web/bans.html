@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:py="http://genshi.edgewall.org/"
+      xmlns:xi="http://www.w3.org/2001/XInclude">
+  <py:match path="content">
+    <p>{<a href="/bans">current</a>,<a href="/bans/all">all</a>,<a href="/bans/expired">expired</a>} bans</p>
+    <py:for each="channel, channel_bans in bans">
+      <h2>$channel</h2>
+      <table style="width: 100%;">
+	<tr>
+	  <th>set by</th>
+	  <th>what</th>
+	  <th>when</th>
+	  <th>${"expired" if show_recent_expiration else "expires"}</th>
+	  <th>reason</th>
+	  <py:if test="show_unset">
+	    <th>unset by</th>
+	    <th>when</th>
+	  </py:if>
+	</tr>
+	<tr py:for="_, mask, mode, set_at, set_by, expire_at, reason, unset_at, unset_by in channel_bans">
+	  <td class="set-by">${set_by.partition('!')[0]}</td>
+	  <td class="tt">+${mode} ${mask}</td>
+	  <td class="date">${set_at.strftime('%A, %e %B %Y at %R %p %Z')}</td>
+	  <py:choose test="">
+	    <py:when test="expire_at">
+	      <td class="date">${expire_at.strftime('%A, %e %B %Y at %R %p %Z')}</td>
+	    </py:when><py:otherwise>
+	      <td class="center">never</td>
+	    </py:otherwise>
+	  </py:choose>
+	  <td class="reason">${reason}</td>
+	  <py:if test="show_unset" py:choose="">
+	    <py:when test="unset_by">
+	      <td class="set-by">${unset_by.partition('!')[0]}</td>
+	      <td class="date">${unset_at.strftime('%A, %e %B %Y at %R %p %Z')}</td>
+	    </py:when><py:otherwise>
+	      <td colspan="2" class="center">not ${"yet" if expire_at else "ever"}</td>
+	    </py:otherwise>
+	  </py:if>
+	</tr>
+      </table>
+    </py:for>
+  </py:match>
+  <xi:include href="base.html" />
+</html>

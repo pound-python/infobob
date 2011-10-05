@@ -1,8 +1,7 @@
 from twisted.words.protocols import irc
-from twisted.internet import reactor, protocol, task, defer, threads, error
-from twisted.enterprise import adbapi
-from twisted.protocols import amp
-from twisted.python import log, reflect
+from twisted.application import internet
+from twisted.internet import reactor, defer, threads, error
+from twisted.python import log
 from twisted.web import xmlrpc
 from infobat.redent import redent
 from infobat.config import conf
@@ -18,7 +17,6 @@ import ampirc
 import random
 import time
 import sys
-import os
 import re
 
 irc.numeric_to_symbolic['330'] = 'RPL_WHOISACCOUNT'
@@ -40,12 +38,13 @@ _etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
 
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
-    r'|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
+    r'|ospaste\.com|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
 
 _pastebin_raw = {
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
+    'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
 }
 
 for ep in _etherpad_like:
@@ -77,7 +76,7 @@ class Infobat(ampirc.IrcChildBase):
         ampirc.IrcChildBase.__init__(self, amp, uuid)
         self.nickname = conf['irc.nickname'].encode()
         self.max_countdown = conf['database.dbm.sync_time']
-        self.dbpool = database.InfobatDatabaseRunner()
+        self.dbpool = conf.dbpool
         self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
@@ -90,22 +89,8 @@ class Infobat(ampirc.IrcChildBase):
         self._waiting_on_queue = collections.defaultdict(
             lambda: defer.DeferredSemaphore(1))
         self._waiting_on_deferred = {}
-        if (conf['misc.manhole.socket_prefix'] is not None
-                and conf['misc.manhole.passwd_file']):
-            from twisted.conch.manhole_tap import makeService
-            self.manhole_service = service = makeService(dict(
-                telnetPort="unix:%s%d.sock" % (
-                    conf['misc.manhole.socket_prefix'], os.getpid()),
-                sshPort=None,
-                namespace={'self': self, 'conf': conf},
-                passwd=conf['misc.manhole.passwd_file'],
-            ))
-            service.startService()
-            reactor.addSystemEventTrigger(
-                'before', 'shutdown', service.stopService)
 
     def autojoinChannels(self):
-        self.startTimer('expireBans', 60)
         for channel in conf['irc.autojoin']:
             channel_obj = conf.channel(channel)
             self.join(channel_obj.name.encode(), channel_obj.key)
@@ -117,6 +102,7 @@ class Infobat(ampirc.IrcChildBase):
         else:
             self.autojoinChannels()
         self.startTimer('serverPing', 60)
+        self.startTimer('expireBans', 60, alsoRunImmediately=False)
 
     def protocolReady(self, first_time=False):
         self._op_deferreds = dict.fromkeys(self.is_opped, defer.succeed(None))
@@ -330,20 +316,18 @@ class Infobat(ampirc.IrcChildBase):
             return
         if channel == self.nickname:
             log.msg('privaction: * %s %s' % (user, message))
-            target = user
             channel_obj = conf.channel('privmsg')
         else:
-            target = channel
             channel_obj = conf.channel(channel)
         if channel != self.nickname and channel_obj.is_usable('chain_learn'):
             self.learn(message, True)
 
     @defer.inlineCallbacks
-    def waitForPrivmsgFrom(self, nick):
+    def waitForPrivmsgFrom(self, nick, waitFor=30):
         semaphore = self._waiting_on_queue[nick]
         yield semaphore.acquire()
         d = self._waiting_on_deferred[nick] = defer.Deferred()
-        timeout = reactor.callLater(30, d.errback, error.TimeoutError())
+        timeout = reactor.callLater(waitFor, d.errback, error.TimeoutError())
         def _release(r):
             if timeout.active():
                 timeout.cancel()
@@ -461,7 +445,7 @@ class Infobat(ampirc.IrcChildBase):
         if not mode_set:
             if not_expired:
                 set_by, set_at, expire_at = not_expired[0]
-                set_nick, _x, set_host = set_by.encode().partition('!')
+                set_nick, _x, set_host = set_by.partition('!')
                 self.notice(nick,
                     _(u'fyi: %(who)s set "+%(mode)s %(mask)s" on %(channel)s '
                     u'%(when)s, which was set to expire %(expire)s.') % dict(
@@ -486,7 +470,7 @@ class Infobat(ampirc.IrcChildBase):
                     _(u'fyi: more than 5 nicks on %(channel)s match the mask '
                     u'%(mask)r, including: %(affected)s') % dict(
                         channel=channel, mask=mask,
-                        affected=', '.join(affected_nicks[:5]),
+                        affected=', '.join(others[:5]),
                     )
                 )
 
@@ -502,9 +486,6 @@ class Infobat(ampirc.IrcChildBase):
                 # its length - 1.
                 n_affected_nicks = (
                     len(others_by_account[None]) + len(others_by_account) - 1)
-                affected_nicks = [info['nick']
-                    for nicks in others_by_account.itervalues()
-                    for info in nicks]
 
                 if n_affected_nicks > 1 and len(others_by_account) > 1:
                     affected = ', '.join(
@@ -579,12 +560,13 @@ class Infobat(ampirc.IrcChildBase):
                             _(u'timeout; not changing to per-account mask.'))
                     else:
                         if msg.lower().startswith('y'):
+                            yield self.ensureOps(channel)
+                            new_mask = '$a:%s' % account
                             self.notice(nick,
                                 _(u'updating %(old)r to %(new)r.') % dict(
                                     old=mask, new=new_mask,
                                 )
                             )
-                            new_mask = '$a:%s' % account
                             self.mode(channel, True, mode, mask=new_mask)
                             self.mode(channel, False, mode, mask=mask)
                             yield self.dbpool.add_ban(
@@ -643,6 +625,27 @@ class Infobat(ampirc.IrcChildBase):
                     )
                 )
             break
+
+        ready, = yield self.waitForPrivmsgFrom(nick, 60*5)
+        self.notice(nick,
+            _(u'what is the reason for setting "+%(mode)s %(mask)s" on '
+            u'%(channel)s? enter a short sentence or two.') % dict(
+                mode=mode, mask=mask, channel=channel
+            )
+        )
+        try:
+            reason = yield ready
+        except error.TimeoutError:
+            self.notice(nick,
+                _(u'no reason for ban set.')
+            )
+        else:
+            yield self.dbpool.set_ban_reason(channel, mask, mode, reason)
+            self.notice(nick,
+                _(u'ban reason now %(reason)r.') % dict(
+                    reason=reason,
+                )
+            )
 
     def ampircTimer_deopSelf(self):
         for channel in self.is_opped:
@@ -878,7 +881,28 @@ class InfobatAmpIrcChild(ampirc.AmpIrcChild):
         with open(config_loc) as cfgFile:
             conf.load(cfgFile)
         self.parent_start = datetime.strptime(start_time, util.ISOFORMAT)
+        conf.dbpool = database.InfobatDatabaseRunner()
         ampirc.AmpIrcChild.__init__(self)
+        if (conf['misc.manhole.socket_prefix'] is not None
+                and conf['misc.manhole.passwd_file']):
+            from twisted.conch.manhole_tap import makeService
+            service = makeService(dict(
+                telnetPort="unix:%s%d.sock" % (
+                    conf['misc.manhole.socket_prefix'], time.time() * 10),
+                sshPort=None,
+                namespace={'self': self, 'conf': conf},
+                passwd=conf['misc.manhole.passwd_file'],
+            ))
+            service.startService()
+            reactor.addSystemEventTrigger(
+                'before', 'shutdown', service.stopService)
+
+        service = internet.TCPServer(conf['web.port'],
+            http.makeSite(conf.dbpool),
+            interface='127.0.0.1')
+        service.startService()
+        reactor.addSystemEventTrigger(
+            'before', 'shutdown', service.stopService)
 
 class InfobatFactory(ampirc.AmpIrcFactory):
     ampChildProtocol = InfobatAmpIrcChild
