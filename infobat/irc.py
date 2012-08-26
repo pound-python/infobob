@@ -64,6 +64,8 @@ class Infobat(irc.IRCClient):
 
     def __init__(self):
         self.nickname = conf['irc.nickname'].encode()
+        if conf['irc.password']:
+            self.password = conf['irc.password'].encode()
         self.dbpool = conf.dbpool
         self.is_opped = set()
         self._op_deferreds = {}
