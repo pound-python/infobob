@@ -1,12 +1,11 @@
 from twisted.words.protocols import irc
-from twisted.application import internet
-from twisted.internet import reactor, defer, threads, error, protocol, task
+from twisted.internet import reactor, defer, error, protocol, task
 from twisted.python import log
 from twisted.web import xmlrpc
 from infobat.redent import redent
 from infobat.config import conf
-from infobat import chains, database, http, util
-from datetime import datetime, timedelta
+from infobat import database, http, util
+from datetime import timedelta
 from urllib import urlencode
 from urlparse import urljoin
 import collections
@@ -14,8 +13,6 @@ import itertools
 import traceback
 import lxml.html
 import operator
-import random
-import time
 import sys
 import re
 
@@ -71,9 +68,7 @@ class Infobat(irc.IRCClient):
 
     def __init__(self):
         self.nickname = conf['irc.nickname'].encode()
-        self.max_countdown = conf['database.dbm.sync_time']
         self.dbpool = conf.dbpool
-        self._load_database()
         self.is_opped = set()
         self._op_deferreds = {}
         self.channel_collation = collections.defaultdict(dict)
@@ -86,7 +81,6 @@ class Infobat(irc.IRCClient):
             lambda: defer.DeferredSemaphore(1))
         self._waiting_on_deferred = {}
         self._loopers = {}
-        self.start = datetime.now()
 
     def autojoinChannels(self):
         for channel in conf['irc.autojoin']:
@@ -112,10 +106,8 @@ class Infobat(irc.IRCClient):
             self.msg('NickServ', 'identify %s' % nickserv_pw.encode())
         else:
             self.autojoinChannels()
-        self.countdown = self.max_countdown
         self.startTimer('serverPing', 60, self._serverPing)
         self.startTimer('expireBans', 60, self._expireBans)
-        self.startTimer('dbsync', 30, self._dbsync)
         self.startTimer('pastebinPing', 60*60*3, self._pastebinPing)
 
     def ensureOps(self, channel):
@@ -246,23 +238,9 @@ class Infobat(irc.IRCClient):
         self.renameNick(oldname, newname)
 
     def connectionLost(self, reason):
-        if self.db:
-            self.db.sync()
         if self.dbpool:
             self.dbpool.close()
         irc.IRCClient.connectionLost(self, reason)
-
-    def _load_database(self):
-        self.db = chains.Database(conf['database.dbm'])
-
-    @defer.inlineCallbacks
-    def _dbsync(self):
-        if self.db is None:
-            return
-        self.countdown -= 1
-        if self.countdown == 0:
-            yield threads.deferToThread(self.db.sync)
-            self.countdown = self.max_countdown
 
     @defer.inlineCallbacks
     def _pastebinPing(self):
@@ -283,52 +261,6 @@ class Infobat(irc.IRCClient):
         pastebins = yield self.dbpool.get_all_pastebins()
         yield util.parallel(pastebins, 10, do_ping)
 
-    def learn(self, string, action=False):
-        if self.db is None:
-            return
-        self.db.learn(self.sanitize_learn_input(string), action)
-
-    def sanitize_learn_input(self, string):
-        """Remove extraneous/irrelevant data from input to markov chain
-
-        - remove nickname prefixes: "nick: foo bar" -> "foo bar"
-
-        """
-        # channel is included for future use, e.g. in checking the channel
-        # username list
-
-        # doing more is a good idea?
-
-        # TODO: use real usernames from the nick list
-        # idea: handle "nick1, nick2: thanks!"
-        # idea: handle obviously technical data like URIs. Too hard? heheh.
-
-        nick_regex = (r'(?P<nick>[A-Za-z\x5b-\x60\x7b-\x7d]'
-            r'[0-9A-Za-z\x5b-\x60\x7b-\x7d\-]*)') # RFC2812 2.3.1 , extended
-        regex = re.compile(nick_regex + r'\s*(?P<sep>:)\s*(?P<message>.*)')
-
-        match = regex.match(string)
-
-        if match is None:
-            sanitized = string
-        else:
-            # in future, do elif to check if the nick group is actually used
-            # in the channel
-            sanitized = match.group('message')
-
-        return sanitized
-
-    def action(self, user, channel, message):
-        if not user:
-            return
-        if channel == self.nickname:
-            log.msg('privaction: * %s %s' % (user, message))
-            channel_obj = conf.channel('privmsg')
-        else:
-            channel_obj = conf.channel(channel)
-        if channel != self.nickname and channel_obj.is_usable('chain_learn'):
-            self.learn(message, True)
-
     @defer.inlineCallbacks
     def waitForPrivmsgFrom(self, nick, waitFor=30):
         semaphore = self._waiting_on_queue[nick]
@@ -344,7 +276,6 @@ class Infobat(irc.IRCClient):
         defer.returnValue((d,))
 
     def privmsg(self, user, channel, message):
-        learn_this = channel != '*'
         if (not self.identified and user.lower().startswith('nickserv!') and
                 ('identified' in message or 'recognized' in message)):
             self.identified = True
@@ -366,9 +297,6 @@ class Infobat(irc.IRCClient):
             target = channel
             channel_obj = conf.channel(channel)
         _ = channel_obj.translate
-        if channel_obj.is_usable('anti_trigger') and (
-                message.startswith('!') and message.lstrip('!')):
-            self.msg(user, _(u'no triggers in %s.') % channel)
         if channel_obj.is_usable('lol') and _lol_regex.search(message):
             self.do_lol(user, channel, _)
         if channel_obj.is_usable('repaste'):
@@ -390,19 +318,6 @@ class Infobat(irc.IRCClient):
             command_func = getattr(self, 'infobat_' + s_command[0], None)
             if command_func is not None and channel_obj.is_usable(s_command[0]):
                 command_func(target, channel_obj, *s_command[1:])
-                learn_this = False
-            elif self.db and channel_obj.is_usable('chain_splice'):
-                action, result = self.db.splice()
-                if action:
-                    self.describe(target, result)
-                else:
-                    if channel != self.nickname:
-                        result = user + ', ' + result
-                    self.msg(target, result)
-
-        if (learn_this and channel != self.nickname
-                and channel_obj.is_usable('chain_learn')):
-            self.learn(message)
 
     def modeChanged(self, user, channel, set, modes, args):
         for mode, arg in zip(modes, args):
@@ -790,97 +705,6 @@ class Infobat(irc.IRCClient):
         """Alias to print the result, aka eval"""
         return self.infobat_exec(target, channel, 'print', *text)
 
-    @defer.inlineCallbacks
-    def infobat_sync(self, target, channel):
-        _ = channel.translate
-        if self.db is not None:
-            yield threads.deferToThread(self.db.sync)
-            self.msg(target, _(u'Done.'))
-        else:
-            self.msg(target, _(u'Database not loaded.'))
-
-    @defer.inlineCallbacks
-    def infobat_unlock(self, target, channel):
-        _ = channel.translate
-        if self.db is not None:
-            self.stopTimer('dbsync')
-            yield threads.deferToThread(self.db.sync)
-            self.db.close()
-            self.db = None
-            self.msg(target, _(u'Database unlocked.'))
-        else:
-            self.msg(target, _(u'Database was unlocked.'))
-
-    def infobat_lock(self, target, channel):
-        _ = channel.translate
-        if self.db is None:
-            self._load_database()
-            self.startTimer('dbsync', 30, self._dbsync)
-            self.msg(target, _(u'Database locked.'))
-        else:
-            self.msg(target, _(u'Database was unlocked.'))
-
-    def infobat_stats(self, target, channel):
-        _ = channel.translate
-        if self.db is None: return
-        delta = datetime.now() - self.start
-        timestr = util.delta_to_string(_, delta)
-        result = _(u"I have been online for %(time_online)s. In that time, "
-            u"I've processed %(wordcount)d characters and spliced "
-            u"%(chaincount)d chains. Currently, I reference %(dblen)d "
-            u"chains with %(begin)d beginnings (%(actions)d actions).") % dict(
-                time_online=timestr,
-                wordcount=self.db.wordcount,
-                chaincount=self.db.chaincount,
-                dblen=len(self.db),
-                begin=self.db.start_offset + self.db.actions,
-                actions=self.db.actions,
-            )
-        self.msg(target, result)
-
-    def infobat_divine(self, target, channel, *seed):
-        _ = channel.translate
-        fortunes = conf['misc.magic8_file']
-        if not fortunes:
-            log.msg('no magic8 file')
-            return
-        self.describe(target, _(u'shakes the psychic black sphere.'))
-        r = random.Random(''.join(seed) + datetime.now().isoformat())
-        st = open(fortunes.encode())
-        l = st.readlines()
-        st.close()
-        l = r.choice(l).strip()
-        self.msg(target, _('It says: "%s"') % l)
-
-    def infobat_probability(self, target, channel, *sentence):
-        _ = channel.translate
-        if self.db is None: return
-        probabilities = self.db.calc_probabilities(' '.join(sentence))
-        if not probabilities:
-            self.msg(target, _(u'line too short.'))
-            return
-        tot_probability = reduce(operator.mul, probabilities)
-        average = sum(probabilities) / len(probabilities)
-        std_dev = (sum((i - average) ** 2 for i in probabilities) /
-            len(probabilities)) ** .5
-        try:
-            inverse = '%.0f' % (1 / tot_probability)
-        except (OverflowError, ZeroDivisionError):
-            inverse = _(u'inf')
-        self.msg(target, _(
-            u'%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d '
-            u'probabilities; %(avg)0.6f%% average, standard deviation '
-            u'%(deviation)0.6f%%, %(min_prob)0.6f%% low, %(max_prob)0.6f%% '
-            u'high.') % dict(
-                chance=tot_probability * 100,
-                inverse=inverse,
-                prob_len=len(probabilities),
-                avg=average * 100,
-                deviation=std_dev * 100,
-                min_prob=min(probabilities) * 100,
-                max_prob=max(probabilities) * 100,
-            ))
-
     def infobat_stop(self, target, channel):
         _ = channel.translate
         self.msg(target, _(u'Okay!'))
@@ -888,28 +712,3 @@ class Infobat(irc.IRCClient):
 
 class InfobatFactory(protocol.ClientFactory):
     protocol = Infobat
-
-    def __init__(self):
-        self.start = datetime.now()
-        conf.dbpool = database.InfobatDatabaseRunner()
-
-        if (conf['misc.manhole.socket_prefix'] is not None
-                and conf['misc.manhole.passwd_file']):
-            from twisted.conch.manhole_tap import makeService
-            service = makeService(dict(
-                telnetPort="unix:%s%d.sock" % (
-                    conf['misc.manhole.socket_prefix'], time.time() * 10),
-                sshPort=None,
-                namespace={'self': self, 'conf': conf},
-                passwd=conf['misc.manhole.passwd_file'],
-            ))
-            service.startService()
-            reactor.addSystemEventTrigger(
-                'before', 'shutdown', service.stopService)
-
-        service = internet.TCPServer(conf['web.port'],
-            http.makeSite(conf.dbpool),
-            interface='127.0.0.1')
-        service.startService()
-        reactor.addSystemEventTrigger(
-            'before', 'shutdown', service.stopService)
