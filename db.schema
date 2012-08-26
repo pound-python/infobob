@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS bans (
     set_by TEXT NOT NULL,
     expire_at INTEGER,
     unset_at INTEGER,
-    unset_by TEXT
+    unset_by TEXT,
+    reason TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_hosts (
@@ -45,19 +46,19 @@ CREATE TABLE IF NOT EXISTS pastebin_reliability (
     was_up INTEGER NOT NULL
 );
 
-CREATE VIEW IF NOT EXISTS pastebin_reliability_percentage AS 
+CREATE VIEW IF NOT EXISTS pastebin_reliability_percentage AS
     SELECT   CAST(SUM(was_up) AS REAL) / COUNT(was_up) AS reliability,
              name
-    FROM     pastebin_reliability 
-    GROUP BY name 
+    FROM     pastebin_reliability
+    GROUP BY name
     HAVING   reliability > 0;
 
-CREATE VIEW IF NOT EXISTS pastebin_ranks AS 
-    SELECT pastebins.name, 
-           service_url, 
-           latency * latency_multiplier / 
-             (reliability * reliability * reliability) AS rank 
-    FROM   pastebins 
-           JOIN pastebin_reliability_percentage 
-             ON pastebins.name = pastebin_reliability_percentage.name 
+CREATE VIEW IF NOT EXISTS pastebin_ranks AS
+    SELECT pastebins.name,
+           service_url,
+           latency * latency_multiplier /
+             (reliability * reliability * reliability) AS rank
+    FROM   pastebins
+           JOIN pastebin_reliability_percentage
+             ON pastebins.name = pastebin_reliability_percentage.name
     WHERE  latency IS NOT NULL;

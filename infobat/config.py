@@ -24,11 +24,11 @@ class Channel(object):
         self.lang = conf['misc.locale.default_lang']
         self.encoding = conf['misc.locale.default_encoding']
         self.update(attrs)
-    
+
     def update(self, attrs):
         for kv in attrs.iteritems():
             setattr(self, *kv)
-    
+
     def _commands_set(self, values):
         for value in values:
             will_set = {'allow': True, 'deny': False}[value[0]]
@@ -39,9 +39,9 @@ class Channel(object):
                 continue
             for command in params:
                 self.command_usable[command] = will_set
-    
+
     commands = property(None, _commands_set)
-    
+
     def is_usable(self, command):
         return self.command_usable.get(command, self.default_usable)
 
@@ -117,7 +117,7 @@ class _Config(object):
     def translate(self, message, lang=None, encoding=None):
         t = self.getTranslator(lang=lang)
         return t.ugettext(message).encode(encoding)
-    
+
     def __repr__(self):
         return '_Config(%r)' % (self.config,)
 
