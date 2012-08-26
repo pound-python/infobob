@@ -20,11 +20,7 @@ irc.numeric_to_symbolic['330'] = 'RPL_WHOISACCOUNT'
 irc.symbolic_to_numeric['RPL_WHOISACCOUNT'] = '330'
 
 _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
-_lol_messages = [
-    '%s is a no-LOL zone.',
-    'i mean it: no LOL in %s.',
-    'seriously, dude, no LOL in %s.',
-]
+_lol_message = '%s is a no-LOL zone.'
 
 _etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
     'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
@@ -583,9 +579,8 @@ class Infobat(irc.IRCClient):
 
     @defer.inlineCallbacks
     def do_lol(self, nick, channel, _):
-        offenses = yield self.dbpool.add_lol(nick)
-        message_idx = min(offenses, len(_lol_messages)) - 1
-        self.msg(nick, _(_lol_messages[message_idx]) % channel)
+        yield self.dbpool.add_lol(nick)
+        self.msg(nick, _(_lol_message) % channel)
 
     @defer.inlineCallbacks
     def pastebin(self, language, data):
@@ -613,7 +608,7 @@ class Infobat(irc.IRCClient):
             return
         which_bin = ', '.join(set(bin for base, pfix, bin, p_id in pastes))
         self.msg(user, _(u'in the future, please use a less awful pastebin '
-            u'(e.g. paste.pocoo.org) instead of %s.') % which_bin)
+            u'(e.g. paste.pound-python.org) instead of %s.') % which_bin)
         if repasted_url is None:
             defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
                 for base, prefix, bin, paste_id in pastes]
