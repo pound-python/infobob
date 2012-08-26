@@ -31,31 +31,32 @@ class InfobatServiceMaker(object):
         with open(options.config) as cfgFile:
             conf.load(cfgFile)
         conf.config_loc = options.config
-        ircFactory = irc.InfobatFactory()
+        self.ircFactory = irc.InfobatFactory()
         clientService = internet.TCPClient
         if conf['irc.ssl']:
             clientService = partial(internet.SSLClient,
                                     contextFactory=ClientContextFactory())
-        ircService = clientService(conf['irc.server'], conf['irc.port'], ircFactory)
-        ircService.setServiceParent(multiService)
+        self.ircService = clientService(
+            conf['irc.server'], conf['irc.port'], self.ircFactory)
+        self.ircService.setServiceParent(multiService)
 
         conf.dbpool = database.InfobatDatabaseRunner()
 
         if (conf['misc.manhole.socket'] is not None
                 and conf['misc.manhole.passwd_file']):
             from twisted.conch.manhole_tap import makeService
-            manholeService = makeService(dict(
+            self.manholeService = makeService(dict(
                 telnetPort="unix:" + conf['misc.manhole.socket'].encode(),
                 sshPort=None,
                 namespace={'self': self, 'conf': conf},
                 passwd=conf['misc.manhole.passwd_file'],
             ))
-            manholeService.setServiceParent(multiService)
+            self.manholeService.setServiceParent(multiService)
 
-        webService = internet.TCPServer(
+        self.webService = internet.TCPServer(
             conf['web.port'],
             http.makeSite(conf.dbpool),
             interface='127.0.0.1')
-        webService.setServiceParent(multiService)
+        self.webService.setServiceParent(multiService)
 
         return multiService

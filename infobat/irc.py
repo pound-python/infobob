@@ -711,3 +711,9 @@ class Infobat(irc.IRCClient):
 class InfobatFactory(protocol.ReconnectingClientFactory):
     protocol = Infobat
     maxDelay = 120
+    lastProtocol = None
+
+    def buildProtocol(self, addr):
+        self.lastProtocol = p = self.protocol()
+        p.factory = self
+        return p
