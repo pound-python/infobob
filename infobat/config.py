@@ -59,6 +59,7 @@ class _Config(object):
         self.apply_defaults()
 
     def apply_defaults(self):
+        self.setdefault('irc.ssl', False)
         self.setdefault('irc.port', 6667)
         self.setdefault('irc.password', None)
         self.setdefault('misc.magic8_file', None)

@@ -1,5 +1,7 @@
 from __future__ import with_statement
+from functools import partial
 from zope.interface import implements
+from twisted.internet.ssl import ClientContextFactory
 from twisted.plugin import IPlugin
 from twisted.python import usage
 from twisted.application import internet, service
@@ -30,9 +32,11 @@ class InfobatServiceMaker(object):
             conf.load(cfgFile)
         conf.config_loc = options.config
         ircFactory = irc.InfobatFactory()
-        ircService = internet.TCPClient(
-            conf['irc.server'], conf['irc.port'],
-            ircFactory, 20, None)
+        clientService = internet.TCPClient
+        if conf['irc.ssl']:
+            clientService = partial(internet.SSLClient,
+                                    contextFactory=ClientContextFactory())
+        ircService = clientService(conf['irc.server'], conf['irc.port'], ircFactory)
         ircService.setServiceParent(multiService)
 
         conf.dbpool = database.InfobatDatabaseRunner()

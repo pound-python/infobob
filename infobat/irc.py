@@ -99,6 +99,7 @@ class Infobat(irc.IRCClient):
             looper.stop()
 
     def signedOn(self):
+        self.factory.resetDelay()
         nickserv_pw = conf['irc.nickserv_pw']
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw.encode())
@@ -707,5 +708,6 @@ class Infobat(irc.IRCClient):
         self.msg(target, _(u'Okay!'))
         reactor.stop()
 
-class InfobatFactory(protocol.ClientFactory):
+class InfobatFactory(protocol.ReconnectingClientFactory):
     protocol = Infobat
+    maxDelay = 120
