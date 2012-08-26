@@ -41,7 +41,7 @@ class InfobatServiceMaker(object):
                 and conf['misc.manhole.passwd_file']):
             from twisted.conch.manhole_tap import makeService
             manholeService = makeService(dict(
-                telnetPort="unix:" + conf['misc.manhole.socket'],
+                telnetPort="unix:" + conf['misc.manhole.socket'].encode(),
                 sshPort=None,
                 namespace={'self': self, 'conf': conf},
                 passwd=conf['misc.manhole.passwd_file'],
