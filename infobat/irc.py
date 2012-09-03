@@ -192,7 +192,7 @@ class Infobat(irc.IRCClient):
 
     def irc_RPL_ENDOFBANLIST(self, prefix, params):
         channel = params[1]
-        bans = self._ban_collation.pop(channel)
+        bans = self._ban_collation.pop(channel, [])
         self.dbpool.ensure_active_bans(channel, 'b', bans)
 
     def irc_RPL_QUIETLIST(self, prefix, params):
@@ -201,7 +201,7 @@ class Infobat(irc.IRCClient):
 
     def irc_RPL_ENDOFQUIETLIST(self, prefix, params):
         channel = params[1]
-        quiets = self._quiet_collation.pop(channel)
+        quiets = self._quiet_collation.pop(channel, [])
         self.dbpool.ensure_active_bans(channel, 'q', quiets)
 
     def _blockChannelUpdates(self):
