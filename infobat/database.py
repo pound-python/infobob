@@ -166,6 +166,45 @@ class InfobatDatabaseRunner(object):
         """, (newnick, oldnick))
 
     @interaction
+    def ensure_active_bans(self, txn, channel, mode, bans):
+        txn.execute("""
+            CREATE TEMPORARY TABLE unsure_bans (
+                mask TEXT,
+                set_by TEXT,
+                set_at REAL
+            )
+        """)
+        txn.executemany("INSERT INTO unsure_bans VALUES (?, ?, ?)", bans)
+        expire_at = time.time() + conf.channel(channel).default_ban_time
+        reason = time.strftime("ban pulled from banlist on %F")
+        txn.execute("""
+            INSERT INTO bans
+                        (channel,
+                         mask,
+                         mode,
+                         set_at,
+                         set_by,
+                         expire_at,
+                         reason)
+            SELECT :channel,
+                   mask,
+                   :mode,
+                   ub.set_at,
+                   ub.set_by,
+                   :expire_at,
+                   :reason
+              FROM unsure_bans ub
+                   LEFT JOIN (SELECT rowid,
+                                     mask
+                                FROM bans
+                               WHERE channel = :channel
+                                 AND mode = :mode
+                                 AND unset_at IS NULL) using (mask)
+             WHERE rowid IS NULL;
+        """, dict(channel=channel, mode=mode, expire_at=expire_at, reason=reason))
+        txn.execute("DROP TABLE unsure_bans")
+
+    @interaction
     def add_ban(self, txn, channel, host, mask, mode):
         now = time.time()
         expire_at = now + conf.channel(channel).default_ban_time

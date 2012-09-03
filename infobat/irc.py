@@ -16,8 +16,14 @@ import operator
 import sys
 import re
 
-irc.numeric_to_symbolic['330'] = 'RPL_WHOISACCOUNT'
-irc.symbolic_to_numeric['RPL_WHOISACCOUNT'] = '330'
+numeric_addendum = dict(
+    RPL_WHOISACCOUNT='330',
+    RPL_QUIETLIST='728',
+    RPL_ENDOFQUIETLIST='729',
+)
+for name, numeric in numeric_addendum.iteritems():
+    irc.numeric_to_symbolic[numeric] = name
+    irc.symbolic_to_numeric[name] = numeric
 
 _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
 _lol_message = '%s is a no-LOL zone.'
@@ -79,6 +85,8 @@ class Infobat(irc.IRCClient):
             lambda: defer.DeferredSemaphore(1))
         self._waiting_on_deferred = {}
         self._loopers = {}
+        self._ban_collation = collections.defaultdict(list)
+        self._quiet_collation = collections.defaultdict(list)
 
     def autojoinChannels(self):
         for channel in conf['irc.autojoin']:
@@ -166,6 +174,9 @@ class Infobat(irc.IRCClient):
 
     def joined(self, channel):
         self.who(channel)
+        if conf.channel(channel).have_ops:
+            self.mode(channel, True, 'b')
+            self.mode(channel, True, 'q')
 
     def irc_RPL_WHOREPLY(self, prefix, params):
         channel, user, host, _, nick = params[1:6]
@@ -174,6 +185,24 @@ class Infobat(irc.IRCClient):
     def irc_RPL_ENDOFWHO(self, prefix, params):
         channel = params[1]
         self.fillChannel(self.channel_collation.pop(channel), channel)
+
+    def irc_RPL_BANLIST(self, prefix, params):
+        _, channel, mask, setter, when = params
+        self._ban_collation[channel].append((mask, setter, when))
+
+    def irc_RPL_ENDOFBANLIST(self, prefix, params):
+        channel = params[1]
+        bans = self._ban_collation.pop(channel)
+        self.dbpool.ensure_active_bans(channel, 'b', bans)
+
+    def irc_RPL_QUIETLIST(self, prefix, params):
+        _, channel, _, mask, setter, when = params
+        self._quiet_collation[channel].append((mask, setter, when))
+
+    def irc_RPL_ENDOFQUIETLIST(self, prefix, params):
+        channel = params[1]
+        quiets = self._quiet_collation.pop(channel)
+        self.dbpool.ensure_active_bans(channel, 'q', quiets)
 
     def _blockChannelUpdates(self):
         if self._channel_update_deferred.called:
