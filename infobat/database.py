@@ -5,12 +5,14 @@ import dateutil.tz
 import datetime
 import sqlite3
 import time
+import uuid
 
+local = dateutil.tz.tzlocal()
 sqlite3.register_adapter(datetime.datetime,
-    lambda x: time.mktime(x.timetuple()))
+    lambda x: time.mktime(x.astimezone(local).timetuple()))
 sqlite3.register_converter('datetime',
     lambda x: datetime.datetime.fromtimestamp(float(x)).replace(
-        tzinfo=dateutil.tz.tzlocal()))
+        tzinfo=local))
 
 def interaction(func):
     def wrap(self, *a, **kw):
@@ -18,6 +20,9 @@ def interaction(func):
     return wrap
 
 class TooSoonError(Exception):
+    pass
+
+class NoSuchBan(Exception):
     pass
 
 _ADD_USER_TO_CHANNEL = """
@@ -172,6 +177,16 @@ class InfobatDatabaseRunner(object):
         return txn.lastrowid
 
     @interaction
+    def add_ban_auth(self, txn, rowid):
+        auth = uuid.uuid4().hex
+        txn.execute("""
+            INSERT INTO ban_authorizations
+                        (ban, code)
+            VALUES (?, ?)
+        """, (rowid, auth))
+        return auth
+
+    @interaction
     def remove_ban(self, txn, channel, host, mask, mode):
         now = time.time()
         txn.execute("""
@@ -240,6 +255,22 @@ class InfobatDatabaseRunner(object):
         return txn.fetchall()
 
     @interaction
+    def get_ban_with_auth(self, txn, rowid, auth):
+        txn.execute("""
+            SELECT channel, mask, mode, set_at as "set_at [datetime]", set_by, expire_at as "expire_at [datetime]", reason, unset_at as "unset_at [datetime]", unset_by
+            FROM   bans
+            JOIN   ban_authorizations authz
+                   ON bans.rowid = authz.ban
+            WHERE  authz.ban = ?
+                   AND authz.code = ?
+            LIMIT  1
+        """, (rowid, auth))
+        res = txn.fetchall()
+        if not res:
+            raise NoSuchBan()
+        return res[0]
+
+    @interaction
     def check_mask(self, txn, channel, mask):
         txn.execute("""
             SELECT nick
@@ -274,3 +305,13 @@ class InfobatDatabaseRunner(object):
                    AND mode = ?
                    AND unset_at IS NULL
         """, (reason, channel, mask, mode))
+
+    @interaction
+    def update_ban_by_rowid(self, txn, rowid, expire_at, reason):
+        print `txn, rowid, expire_at, reason`
+        txn.execute("""
+            UPDATE bans
+            SET    expire_at = ?,
+                   reason = ?
+            WHERE  rowid = ?
+        """, (expire_at, reason, rowid))

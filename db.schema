@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS bans (
     reason TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ban_authorizations (
+    ban INTEGER NOT NULL REFERENCES bans (rowid),
+    code TEXT NOT NULL,
+    PRIMARY KEY (ban, code)
+);
+
 CREATE TABLE IF NOT EXISTS user_hosts (
     nick TEXT PRIMARY KEY,
     host TEXT

@@ -348,7 +348,7 @@ class Infobat(irc.IRCClient):
         try:
             if mode_set:
                 if nick != self.nickname:
-                    yield self.dbpool.add_ban(channel, user, mask, mode)
+                    rowid = yield self.dbpool.add_ban(channel, user, mask, mode)
             else:
                 not_expired = yield self.dbpool.remove_ban(
                     channel, user, mask, mode)
@@ -457,7 +457,7 @@ class Infobat(irc.IRCClient):
                         )
                         self.mode(channel, True, mode, mask=new_mask)
                         self.mode(channel, False, mode, mask=mask)
-                        yield self.dbpool.add_ban(
+                        rowid = yield self.dbpool.add_ban(
                             channel, user, new_mask, mode)
                         mask = new_mask
 
@@ -488,83 +488,13 @@ class Infobat(irc.IRCClient):
                             )
                             self.mode(channel, True, mode, mask=new_mask)
                             self.mode(channel, False, mode, mask=mask)
-                            yield self.dbpool.add_ban(
+                            rowid = yield self.dbpool.add_ban(
                                 channel, user, new_mask, mode)
                             mask = new_mask
 
-        ready, = yield self.waitForPrivmsgFrom(nick)
-        timestr = util.delta_to_string(_,
-            timedelta(seconds=channel_obj.default_ban_time))
-        self.msg(nick,
-            _(u'by default, setting "+%(mode)s %(mask)s" on %(channel)s will '
-            u'expire after %(delta)s. to change it, reply with a time string '
-            u'or "never". (reply with "help" for help.)') % dict(
-                mode=mode, mask=mask, channel=channel, delta=timestr,
-            )
-        )
-        while True:
-            try:
-                msg = yield ready
-            except error.TimeoutError:
-                self.msg(nick,
-                    _(u'timeout; keeping default expiration time.'))
-                break
-            if msg == _(u'help'):
-                ready, = yield self.waitForPrivmsgFrom(nick)
-                self.msg(nick,
-                    _(u'a time string is one or more space-delimited numbers, '
-                    u'suffixed with one of "s", "m", "h", "d", or "w" to '
-                    u'indicate seconds, minutes, hours, days, and weeks, '
-                    u'respectively. e.g. "1w 2d 12h"')
-                )
-                continue
-            elif msg == _(u'never'):
-                delta = None
-            else:
-                try:
-                    delta = util.parse_time_string(msg)
-                except ValueError:
-                    ready, = yield self.waitForPrivmsgFrom(nick)
-                    self.msg(nick,
-                        _(u'invalid time string: %(string)r') % dict(
-                            string=msg
-                        )
-                    )
-                    continue
-            yield self.dbpool.update_ban_expiration(channel, mask, mode, delta)
-            if delta is None:
-                self.msg(nick,
-                    _(u'now never expiring.')
-                )
-            else:
-                timestr = util.delta_to_string(_, timedelta(seconds=delta))
-                self.msg(nick,
-                    _(u'now expiring after %(delta)s.') % dict(
-                        delta=timestr,
-                    )
-                )
-            break
-
-        ready, = yield self.waitForPrivmsgFrom(nick, 60*5)
-        self.msg(nick,
-            _(u'what is the reason for setting "+%(mode)s %(mask)s" on '
-            u'%(channel)s? enter a short sentence or two.') % dict(
-                mode=mode, mask=mask, channel=channel
-            )
-        )
-        try:
-            reason = yield ready
-        except error.TimeoutError:
-            self.msg(nick,
-                _(u'no reason for ban set.')
-            )
-        else:
-            yield self.dbpool.set_ban_reason(channel, mask, mode, reason)
-            self.msg(nick,
-                _(u'ban reason now %(reason)r.') % dict(
-                    reason=reason,
-                )
-            )
+        auth = yield self.dbpool.add_ban_auth(rowid)
+        url = urljoin(conf['web.url'], '/bans/edit/%s/%s' % (rowid, auth)).encode()
+        self.msg(nick, _(u'to enter and edit details about this ban, please visit %s') % (url,))
 
     def _deopSelf(self):
         for channel in self.is_opped:

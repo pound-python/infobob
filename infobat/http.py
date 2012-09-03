@@ -2,9 +2,11 @@ from twisted.internet.defer import inlineCallbacks
 from twisted.internet import reactor
 from twisted.web import client, server
 from genshi.template import TemplateLoader
+from infobat.database import NoSuchBan
 from infobat.config import conf
 from klein.resource import KleinResource
 from klein.decorators import expose
+from dateutil.parser import parse
 import itertools
 import operator
 
@@ -53,6 +55,32 @@ class InfobatResource(KleinResource):
         bans = itertools.groupby(bans, operator.itemgetter(0))
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=True, show_recent_expiration=True)
+
+    @expose('/bans/edit/<rowid>/<auth>', methods=['GET', 'HEAD'])
+    @inlineCallbacks
+    def editBan(self, request, rowid, auth):
+        ban = yield self.dbpool.get_ban_with_auth(rowid, auth)
+        renderTemplate(request, self.loader.load('edit_ban.html'),
+            ban=ban, message=None)
+
+    @expose('/bans/edit/<rowid>/<auth>', methods=['POST'])
+    @inlineCallbacks
+    def postEditBan(self, request, rowid, auth):
+        ban = yield self.dbpool.get_ban_with_auth(rowid, auth)
+        _, _, _, _, _, expire_at, reason, _, _ = ban
+        if 'expire_at' in request.args:
+            raw_expire_at = request.args['expire_at'][0]
+            if raw_expire_at == 'never':
+                expire_at = None
+            else:
+                expire_at = parse(raw_expire_at)
+        if 'reason' in request.args:
+            reason = request.args['reason'][0]
+        print `(rowid, expire_at, reason)`
+        yield self.dbpool.update_ban_by_rowid(rowid, expire_at, reason)
+        ban = ban[:5] + (expire_at, reason) + ban[7:]
+        renderTemplate(request, self.loader.load('edit_ban.html'),
+            ban=ban, message='ban details updated')
 
     @expose('/bans')
     @inlineCallbacks
