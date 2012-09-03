@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:py="http://genshi.edgewall.org/"
+      xmlns:xi="http://www.w3.org/2001/XInclude">
+  <py:match path="content" py:with="channel, mask, mode, set_at, set_by, expire_at, reason, unset_at, unset_by = ban">
+  <p py:if="message" py:content="message" />
+  <h2>editing ban</h2>
+  <h4>$channel +${mode} $mask</h4>
+  <form action="" method="post">
+    <dl>
+      <dt>expire at (enter 'never' for never)</dt>
+      <dd><input type="text" name="expire_at" size="40" value="${'never' if expire_at is None else expire_at}" /></dd>
+      <dt>reason</dt>
+      <dd><textarea name="reason" rows="4" cols="40" py:content="reason" /></dd>
+    </dl>
+    <p><input type="submit" name="submit" value="Edit" /></p>
+  </form>
+  </py:match>
+  <xi:include href="base.html" />
+</html>
