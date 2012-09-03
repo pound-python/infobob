@@ -173,8 +173,14 @@ class Infobat(irc.IRCClient):
         self.sendLine('WHO %s' % (target,))
 
     def joined(self, channel):
+        channel_obj = conf.channel(channel)
+        if channel_obj.anti_redirect:
+            self.part(channel)
+            reactor.callLater(5, self.join, channel_obj.anti_redirect.encode())
+            return
+
         self.who(channel)
-        if conf.channel(channel).have_ops:
+        if channel_obj.have_ops:
             self.mode(channel, True, 'b')
             self.mode(channel, True, 'q')
 

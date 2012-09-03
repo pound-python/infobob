@@ -9,6 +9,7 @@ except ImportError:
 
 _channel_defaults = dict(
     have_ops=False,
+    anti_redirect=None,
     commands=(),
     flood_control=None,
     key=None,
