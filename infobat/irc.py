@@ -36,10 +36,11 @@ _etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
 _etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
 
 _bad_pastebin_regex = re.compile(
-    r'((?:https?://)?((?:[a-z0-9-]+\.)*)(pastebin\.(?:com|org|ca)'
-    r'|ospaste\.com|%s)/)([a-z0-9]+)/?' % (_etherpad_like_regex,), re.I)
+    r'((?:https?://)?((?:[a-z0-9-]+\.)*)([ph]astebin\.(?:com|org|ca)'
+    r'|ospaste\.com|%s)/)([a-z0-9]+)(?:\.[a-z0-9]+|/)?' % (_etherpad_like_regex,), re.I)
 
 _pastebin_raw = {
+    'hastebin.com': 'http://%shastebin.com/raw/%s',
     'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
@@ -574,9 +575,6 @@ class Infobat(irc.IRCClient):
             repasted_url = yield self.dbpool.get_repaste(urls)
         except database.TooSoonError:
             return
-        which_bin = ', '.join(set(bin for base, pfix, bin, p_id in pastes))
-        self.msg(user, _(u'in the future, please use a less awful pastebin '
-            u'(e.g. paste.pound-python.org) instead of %s.') % which_bin)
         if repasted_url is None:
             defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
                 for base, prefix, bin, paste_id in pastes]
