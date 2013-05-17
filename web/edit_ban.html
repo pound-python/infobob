@@ -8,13 +8,19 @@
   <h4>$channel +${mode} $mask</h4>
   <form action="" method="post">
     <dl>
-      <dt>expire at (enter 'never' for never)</dt>
+      <dt>expire at (enter 'never' for never; prepend a + for relative dates)</dt>
       <dd><input type="text" name="expire_at" size="40" value="${'never' if expire_at is None else expire_at}" /></dd>
       <dt>reason</dt>
       <dd><textarea name="reason" rows="4" cols="40" py:content="reason" /></dd>
     </dl>
     <p><input type="submit" name="submit" value="Edit" /></p>
   </form>
+  <h3>Help for relative dates</h3>
+  <p>
+    If an expiration date starts with +, the date will be parsed as a date
+    relative to right now. Examples include <tt>+1month</tt>, <tt>+1year
+    6month</tt>, and <tt>+1year 1month 1week 1day 1hour 1minute 1second</tt>.
+  </p>
   </py:match>
   <xi:include href="base.html" />
 </html>

@@ -4,9 +4,9 @@ from twisted.web import client, server
 from genshi.template import TemplateLoader
 from infobat.database import NoSuchBan
 from infobat.config import conf
+from infobat.util import parse_time_string
 from klein.resource import KleinResource
 from klein.decorators import expose
-from dateutil.parser import parse
 import itertools
 import operator
 
@@ -73,10 +73,9 @@ class InfobatResource(KleinResource):
             if raw_expire_at == 'never':
                 expire_at = None
             else:
-                expire_at = parse(raw_expire_at)
+                expire_at = parse_time_string(raw_expire_at)
         if 'reason' in request.args:
             reason = request.args['reason'][0]
-        print `(rowid, expire_at, reason)`
         yield self.dbpool.update_ban_by_rowid(rowid, expire_at, reason)
         ban = ban[:5] + (expire_at, reason) + ban[7:]
         renderTemplate(request, self.loader.load('edit_ban.html'),

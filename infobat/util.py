@@ -1,4 +1,7 @@
 from twisted.internet import defer, task
+from datetime import datetime
+from dateutil.parser import parse
+from dateutil.relativedelta import relativedelta
 import time
 import re
 
@@ -40,21 +43,27 @@ def delta_to_string(_, delta):
     return timestr
 
 _time_coefficients = {
-    's': 1,
-    'm': 60,
-    'h': 60 * 60,
-    'd': 60 * 60 * 24,
-    'w': 60 * 60 * 24 * 7,
+    's': 'seconds',
+    'm': 'minutes',
+    'h': 'hours',
+    'd': 'days',
+    'w': 'weeks', 'wk': 'weeks',
+    'mo': 'months',
+    'y': 'years', 'yr': 'years',
 }
-_time_regex = re.compile(r'([0-9]+)([smhdw])$', re.I)
+_time_regex = re.compile(r'([0-9]+)(\w+)$', re.I)
 def parse_time_string(s):
-    time_len = 0
-    for t in s.split():
+    if not s.startswith('+'):
+        return parse(s)
+    args = {}
+    for t in s[1:].split():
         m = _time_regex.match(t)
         if not m:
-            raise ValueError('invalid time: %r' % (s,))
-        time_len += int(m.group(1)) * _time_coefficients[m.group(2)]
-    return time_len
+            raise ValueError('invalid relative date part: %r' % (s,))
+        name = m.group(2)
+        name = _time_coefficients.get(name, name + 's')
+        args[name] = int(m.group(1))
+    return datetime.now() + relativedelta(**args)
 
 def ctime(_, i):
     if i is None:
