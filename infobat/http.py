@@ -29,7 +29,9 @@ def get_page(url, *a, **kw):
 
 def renderTemplate(request, tmpl, **kwargs):
     request.setHeader('Content-type', 'text/html; charset=utf-8')
-    request.write(tmpl.generate(**kwargs).render('html', doctype='html'))
+    request.write(tmpl
+                  .generate(**kwargs)
+                  .render('html', doctype='html5', encoding='utf-8'))
     request.finish()
 
 class InfobatResource(KleinResource):
