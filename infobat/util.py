@@ -2,9 +2,11 @@ from twisted.internet import defer, task
 from datetime import datetime
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
+from dateutil.tz import tzlocal
 import time
 import re
 
+local = tzlocal()
 ISOFORMAT = '%Y-%m-%dT%H:%M:%S'
 
 def parallel(iterable, count, f, *args, **named):
@@ -63,7 +65,7 @@ def parse_time_string(s):
         name = m.group(2)
         name = _time_coefficients.get(name, name + 's')
         args[name] = int(m.group(1))
-    return datetime.now() + relativedelta(**args)
+    return datetime.now(local) + relativedelta(**args)
 
 def ctime(_, i):
     if i is None:
