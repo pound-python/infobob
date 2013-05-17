@@ -297,7 +297,7 @@ class Infobat(irc.IRCClient):
         yield util.parallel(pastebins, 10, do_ping)
 
     @defer.inlineCallbacks
-    def waitForPrivmsgFrom(self, nick, waitFor=30):
+    def waitForPrivmsgFrom(self, nick, waitFor=1200):
         semaphore = self._waiting_on_queue[nick]
         yield semaphore.acquire()
         d = self._waiting_on_deferred[nick] = defer.Deferred()
@@ -512,21 +512,21 @@ class Infobat(irc.IRCClient):
                         msg = yield ready
                     except error.TimeoutError:
                         self.msg(nick,
-                            _(u'timeout; not changing to per-account mask.'))
-                    else:
-                        if msg.lower().startswith('y'):
-                            yield self.ensureOps(channel)
-                            new_mask = '$a:%s' % account
-                            self.msg(nick,
-                                _(u'updating %(old)r to %(new)r.') % dict(
-                                    old=mask, new=new_mask,
-                                )
+                            _(u'timeout; changing to per-account mask.'))
+                        msg = 'yes'
+                    if msg.lower().startswith('y'):
+                        yield self.ensureOps(channel)
+                        new_mask = '$a:%s' % account
+                        self.msg(nick,
+                            _(u'updating %(old)r to %(new)r.') % dict(
+                                old=mask, new=new_mask,
                             )
-                            self.mode(channel, True, mode, mask=new_mask)
-                            self.mode(channel, False, mode, mask=mask)
-                            rowid = yield self.dbpool.add_ban(
-                                channel, user, new_mask, mode)
-                            mask = new_mask
+                        )
+                        self.mode(channel, True, mode, mask=new_mask)
+                        self.mode(channel, False, mode, mask=mask)
+                        rowid = yield self.dbpool.add_ban(
+                            channel, user, new_mask, mode)
+                        mask = new_mask
 
         auth = yield self.dbpool.add_ban_auth(rowid)
         url = urljoin(conf['web.url'], '/bans/edit/%s/%s' % (rowid, auth)).encode()
