@@ -45,27 +45,42 @@ def delta_to_string(_, delta):
     return timestr
 
 _time_coefficients = {
-    's': 'seconds',
-    'm': 'minutes',
-    'h': 'hours',
-    'd': 'days',
-    'w': 'weeks', 'wk': 'weeks',
-    'mo': 'months',
-    'y': 'years', 'yr': 'years',
+    's': 'seconds', 'second': 'seconds', 'seconds': 'seconds',
+    'min': 'minutes', 'minute': 'minutes', 'minutes': 'minutes',
+    'h': 'hours', 'hour': 'hours', 'hours': 'hours',
+    'd': 'days', 'day': 'days', 'days': 'days',
+    'w': 'weeks', 'wk': 'weeks', 'week': 'weeks', 'weeks': 'weeks',
+    'mo': 'months', 'month': 'months', 'months': 'months',
+    'y': 'years', 'yr': 'years', 'year': 'years', 'years': 'years',
 }
-_time_regex = re.compile(r'([0-9]+)(\w+)$', re.I)
 def parse_time_string(s):
+    s = s.strip()
     if not s.startswith('+'):
         return parse(s)
-    args = {}
-    for t in s[1:].split():
-        m = _time_regex.match(t)
-        if not m:
-            raise ValueError('invalid relative date part: %r' % (s,))
-        name = m.group(2)
-        name = _time_coefficients.get(name, name + 's')
-        args[name] = int(m.group(1))
+    args = parse_relative_time_string(s)
     return datetime.now(local) + relativedelta(**args)
+
+_time_regex = re.compile(
+    r'(?: ^\+ | (?!^)\+?) ([0-9]+) ([^0-9+]*)', re.VERBOSE)
+def  parse_relative_time_string(s):
+  s = ''.join(s.split())
+  parsed = {}
+  for m in _time_regex.finditer(s):
+      quantity, unit = m.groups()
+      quantity = int(quantity)
+      try:
+          unit = _time_coefficients[unit.lower()]
+      except KeyError:
+          raise ValueError("Invalid unit %r" % (unit,))
+
+      if unit in parsed and parsed[unit] != quantity:
+          raise ValueError(
+              "Conflicting quantities for unit %r: %r vs %r"
+              % (unit, parsed[unit], quantity))
+      parsed[unit] = quantity
+  if not parsed:
+      raise ValueError('invalid relative date: %r' % (s,))
+  return parsed
 
 def ctime(_, i):
     if i is None:
