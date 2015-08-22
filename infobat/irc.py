@@ -41,7 +41,7 @@ _bad_pastebin_regex = re.compile(
 
 _pastebin_raw = {
     'hastebin.com': 'http://%shastebin.com/raw/%s',
-    'pastebin.com': 'http://%spastebin.com/download.php?i=%s',
+    'pastebin.com': 'http://%spastebin.com/raw.php?i=%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
     'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
