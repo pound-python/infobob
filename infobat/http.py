@@ -129,7 +129,18 @@ class InfobatWebUI(object):
             if raw_expire_at == 'never':
                 expire_at = None
             else:
-                expire_at = parse_time_string(raw_expire_at)
+                try:
+                    expire_at = parse_time_string(raw_expire_at)
+                except ValueError:
+                    # This will cause the ban reason in the form to be the old
+                    # one (from the DB), not very user-friendly... but it
+                    # prevents the exception from breaking the page.
+                    message = (
+                        'Invalid expiration timestamp or relative date {0!r}'
+                    ).format(raw_expire_at)
+                    renderTemplate(request, self.loader.load('edit_ban.html'),
+                        ban=ban, message=message)
+                    return
         if 'reason' in request.args:
             reason = request.args['reason'][0]
         yield self.dbpool.update_ban_by_rowid(rowid, expire_at, reason)
