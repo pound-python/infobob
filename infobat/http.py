@@ -3,7 +3,6 @@ from twisted.internet import reactor
 from twisted.web import client, server
 from genshi.template import TemplateLoader
 from infobat.database import NoSuchBan
-from infobat.config import conf
 from infobat.util import parse_time_string
 from klein.resource import KleinResource
 from klein.decorators import expose
@@ -91,6 +90,6 @@ class InfobatResource(KleinResource):
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=False, show_recent_expiration=False)
 
-def makeSite(dbpool):
-    loader = TemplateLoader(conf['web.root'], auto_reload=True)
-    return server.Site(InfobatResource(loader, conf.dbpool))
+def makeSite(templates_dir, dbpool):
+    loader = TemplateLoader(templates_dir, auto_reload=True)
+    return server.Site(InfobatResource(loader, dbpool))

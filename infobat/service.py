@@ -6,7 +6,7 @@ from twisted.plugin import IPlugin
 from twisted.python import usage
 from twisted.application import internet, service
 from twisted.application.service import IServiceMaker
-from infobat.config import conf
+from infobat.config import InfobatConfig
 from infobat import irc, database, http
 
 class InfobatOptions(usage.Options):
@@ -28,10 +28,11 @@ class InfobatServiceMaker(object):
     def makeService(self, options):
         multiService = service.MultiService()
 
+        conf = InfobatConfig()
         with open(options.config) as cfgFile:
             conf.load(cfgFile)
         conf.config_loc = options.config
-        self.ircFactory = irc.InfobatFactory()
+        self.ircFactory = irc.InfobatFactory(conf)
         clientService = internet.TCPClient
         if conf['irc.ssl']:
             clientService = partial(internet.SSLClient,
@@ -40,7 +41,7 @@ class InfobatServiceMaker(object):
             conf['irc.server'], conf['irc.port'], self.ircFactory)
         self.ircService.setServiceParent(multiService)
 
-        conf.dbpool = database.InfobatDatabaseRunner()
+        conf.dbpool = database.InfobatDatabaseRunner(conf)
 
         if (conf['misc.manhole.socket'] is not None
                 and conf['misc.manhole.passwd_file']):
@@ -55,7 +56,7 @@ class InfobatServiceMaker(object):
 
         self.webService = internet.TCPServer(
             conf['web.port'],
-            http.makeSite(conf.dbpool),
+            http.makeSite(conf['web.root'], conf.dbpool),
             interface='127.0.0.1')
         self.webService.setServiceParent(multiService)
 
