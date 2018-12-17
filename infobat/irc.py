@@ -354,6 +354,12 @@ class Infobat(irc.IRCClient):
             if command_func is not None and channel_obj.is_usable(s_command[0]):
                 command_func(target, channel_obj, *s_command[1:])
 
+    def noticed(self, user, channel, message):
+        if (not self.identified and user.lower().startswith('nickserv!') and
+                ('identified' in message or 'recognized' in message)):
+            self.identified = True
+            self.autojoinChannels()
+
     def modeChanged(self, user, channel, set, modes, args):
         for mode, arg in zip(modes, args):
             if mode == 'o' and arg == self.nickname:
