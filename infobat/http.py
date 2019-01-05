@@ -79,13 +79,13 @@ class InfobatResource(KleinResource):
         self.loader = loader
         self.dbpool = dbpool
 
-    @expose('/bans/all')
+    @expose('/bans')
     @inlineCallbacks
-    def allBans(self, request):
-        bans = yield self.dbpool.get_all_bans()
+    def bans(self, request):
+        bans = yield self.dbpool.get_active_bans()
         bans = itertools.groupby(bans, operator.itemgetter(0))
         renderTemplate(request, self.loader.load('bans.html'),
-            bans=bans, show_unset=True, show_recent_expiration=False)
+            bans=bans, show_unset=False, show_recent_expiration=False)
 
     @expose('/bans/expired')
     @expose('/bans/expired/<count:int>')
@@ -96,6 +96,14 @@ class InfobatResource(KleinResource):
         bans = itertools.groupby(bans, operator.itemgetter(0))
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=True, show_recent_expiration=True)
+
+    @expose('/bans/all')
+    @inlineCallbacks
+    def allBans(self, request):
+        bans = yield self.dbpool.get_all_bans()
+        bans = itertools.groupby(bans, operator.itemgetter(0))
+        renderTemplate(request, self.loader.load('bans.html'),
+            bans=bans, show_unset=True, show_recent_expiration=False)
 
     @expose('/bans/edit/<rowid>/<auth>', methods=['GET', 'HEAD'])
     @inlineCallbacks
@@ -121,14 +129,6 @@ class InfobatResource(KleinResource):
         ban = ban[:5] + (expire_at, reason) + ban[7:]
         renderTemplate(request, self.loader.load('edit_ban.html'),
             ban=ban, message='ban details updated')
-
-    @expose('/bans')
-    @inlineCallbacks
-    def bans(self, request):
-        bans = yield self.dbpool.get_active_bans()
-        bans = itertools.groupby(bans, operator.itemgetter(0))
-        renderTemplate(request, self.loader.load('bans.html'),
-            bans=bans, show_unset=False, show_recent_expiration=False)
 
 def makeSite(templates_dir, dbpool):
     loader = TemplateLoader(templates_dir, auto_reload=True)
