@@ -311,10 +311,7 @@ class Infobat(irc.IRCClient):
         defer.returnValue((d,))
 
     def privmsg(self, user, channel, message):
-        if (not self.identified and user.lower().startswith('nickserv!') and
-                ('identified' in message or 'recognized' in message)):
-            self.identified = True
-            self.autojoinChannels()
+        self._autojoinIfJustIdentified(user, message)
         if not user: return
         user = user.split('!', 1)[0]
         if user.lower() in ('nickserv', 'chanserv', 'memoserv',
@@ -355,8 +352,17 @@ class Infobat(irc.IRCClient):
                 command_func(target, channel_obj, *s_command[1:])
 
     def noticed(self, user, channel, message):
-        if (not self.identified and user.lower().startswith('nickserv!') and
-                ('identified' in message or 'recognized' in message)):
+        self._autojoinIfJustIdentified(user, message)
+
+    def _autojoinIfJustIdentified(self, user, message):
+        """
+        Trigger autojoin if nickserv told us we've been identified.
+        """
+        if (
+            not self.identified
+            and user.lower().startswith('nickserv!')
+            and ('identified' in message or 'recognized' in message)
+        ):
             self.identified = True
             self.autojoinChannels()
 
