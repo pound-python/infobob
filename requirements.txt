@@ -38,4 +38,4 @@ textile==2.1.4
 tweepy==1.11
 Twisted==16.1.1
 Werkzeug==0.8.3
-git+git://github.com/twisted/klein.git@7cf3741070cba4d4e0016a7175158ec5993fd7f2
+./klein
