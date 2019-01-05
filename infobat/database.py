@@ -38,7 +38,8 @@ _ADD_HOST_TO_USER = """
 """
 
 class InfobatDatabaseRunner(object):
-    def __init__(self):
+    def __init__(self, text_factory=str):
+        self._text_factory = text_factory
         self.dbpool = adbapi.ConnectionPool(
             'sqlite3', conf['database.sqlite.db_file'],
             check_same_thread=False,
@@ -46,7 +47,7 @@ class InfobatDatabaseRunner(object):
             detect_types=sqlite3.PARSE_COLNAMES)
 
     def _setup_connection(self, conn):
-        conn.text_factory = str
+        conn.text_factory = self._text_factory
 
     def close(self):
         self.dbpool.close()
@@ -75,7 +76,10 @@ class InfobatDatabaseRunner(object):
         row = txn.fetchall()
         if row:
             url, time_of = row[0]
-            delta = time.time() - time_of
+            if time_of:
+                delta = time.time() - time_of
+            else:
+                delta = 15
             if delta > 60*60*24*7:
                 return None
             elif delta < 10:
@@ -167,6 +171,8 @@ class InfobatDatabaseRunner(object):
 
     @interaction
     def ensure_active_bans(self, txn, channel, mode, bans):
+        bans = [(mask, set_by, set_at) for mask, set_by, set_at in bans
+                if '!' in set_by or set_by.count('.') != 2 or not set_by.endswith('.freenode.net')]
         txn.execute("""
             CREATE TEMPORARY TABLE unsure_bans (
                 mask TEXT,
@@ -255,7 +261,7 @@ class InfobatDatabaseRunner(object):
         txn.execute("""
             SELECT channel, mask, mode, set_at as "set_at [datetime]", set_by, expire_at as "expire_at [datetime]", reason, unset_at as "unset_at [datetime]", unset_by
             FROM   bans
-            ORDER BY channel, set_at
+            ORDER BY channel, set_at DESC
         """)
         return txn.fetchall()
 
@@ -265,7 +271,7 @@ class InfobatDatabaseRunner(object):
             SELECT channel, mask, mode, set_at as "set_at [datetime]", set_by, expire_at as "expire_at [datetime]", reason, unset_at as "unset_at [datetime]", unset_by
             FROM   bans
             WHERE  unset_at IS NULL
-            ORDER BY channel, set_at
+            ORDER BY channel, set_at DESC
         """)
         return txn.fetchall()
 

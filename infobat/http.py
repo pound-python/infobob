@@ -1,6 +1,6 @@
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet import reactor
-from twisted.web import client, server
+from twisted.web import client, server, http_headers
 from genshi.template import TemplateLoader
 from infobat.database import NoSuchBan
 from infobat.config import conf
@@ -9,6 +9,7 @@ from klein.resource import KleinResource
 from klein.decorators import expose
 import itertools
 import operator
+import io
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
     handleStatus_301 = handleStatus_302 = handleStatus_302 = lambda self: None
@@ -21,11 +22,14 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.waiting = 0
             self.deferred.callback((page, self))
 
-def get_page(url, *a, **kw):
-    scheme, host, port, path = client._parse(url)
-    factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
-    reactor.connectTCP(host, port, factory)
-    return factory.deferred
+def get_page(*a, **kw):
+    if 'postdata' in kw:
+        kw['bodyProducer'] = client.FileBodyProducer(io.BytesIO(kw.pop('postdata')))
+    if 'headers' in kw:
+        kw['headers'] = http_headers.Headers(kw.pop('headers'))
+    return client.BrowserLikeRedirectAgent(client.Agent(reactor))\
+        .request(*a, **kw)\
+        .addCallback(lambda resp: client.readBody(resp).addCallback(lambda body: (body, resp)))
 
 def renderTemplate(request, tmpl, **kwargs):
     request.setHeader('Content-type', 'text/html; charset=utf-8')
@@ -93,4 +97,4 @@ class InfobatResource(KleinResource):
 
 def makeSite(dbpool):
     loader = TemplateLoader(conf['web.root'], auto_reload=True)
-    return server.Site(InfobatResource(loader, conf.dbpool))
+    return server.Site(InfobatResource(loader, dbpool))

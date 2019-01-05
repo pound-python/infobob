@@ -41,6 +41,7 @@ class InfobatServiceMaker(object):
         self.ircService.setServiceParent(multiService)
 
         conf.dbpool = database.InfobatDatabaseRunner()
+        conf.dbpool_unicode = database.InfobatDatabaseRunner(text_factory=unicode)
 
         if (conf['misc.manhole.socket'] is not None
                 and conf['misc.manhole.passwd_file']):
@@ -55,7 +56,7 @@ class InfobatServiceMaker(object):
 
         self.webService = internet.TCPServer(
             conf['web.port'],
-            http.makeSite(conf.dbpool),
+            http.makeSite(conf.dbpool_unicode),
             interface='127.0.0.1')
         self.webService.setServiceParent(multiService)
 
