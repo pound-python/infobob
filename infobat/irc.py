@@ -3,7 +3,6 @@ from twisted.internet import reactor, defer, error, protocol, task
 from twisted.python import log
 from twisted.web import xmlrpc
 from infobat.redent import redent
-from infobat.config import conf
 from infobat import database, http, util
 from datetime import timedelta
 from urllib import urlencode
@@ -69,7 +68,8 @@ class Infobat(irc.IRCClient):
 
     db = dbpool = manhole_service = None
 
-    def __init__(self):
+    def __init__(self, conf):
+        self._conf = conf
         self.nickname = conf['irc.nickname'].encode()
         if conf['irc.password']:
             self.password = conf['irc.password'].encode()
@@ -90,8 +90,8 @@ class Infobat(irc.IRCClient):
         self._quiet_collation = collections.defaultdict(list)
 
     def autojoinChannels(self):
-        for channel in conf['irc.autojoin']:
-            channel_obj = conf.channel(channel)
+        for channel in self._conf['irc.autojoin']:
+            channel_obj = self._conf.channel(channel)
             self.join(channel_obj.name.encode(), channel_obj.key)
 
     def startTimer(self, name, interval, method, *a, **kw):
@@ -109,7 +109,7 @@ class Infobat(irc.IRCClient):
 
     def signedOn(self):
         self.factory.resetDelay()
-        nickserv_pw = conf['irc.nickserv_pw']
+        nickserv_pw = self._conf['irc.nickserv_pw']
         if nickserv_pw:
             self.msg('NickServ', 'identify %s' % nickserv_pw.encode())
         else:
@@ -174,7 +174,7 @@ class Infobat(irc.IRCClient):
         self.sendLine('WHO %s' % (target,))
 
     def joined(self, channel):
-        channel_obj = conf.channel(channel)
+        channel_obj = self._conf.channel(channel)
         if channel_obj.anti_redirect:
             self.part(channel)
             reactor.callLater(5, self.join, channel_obj.anti_redirect.encode())
@@ -327,10 +327,10 @@ class Infobat(irc.IRCClient):
                 return
             log.msg('privmsg from %s: %s' % (user, message))
             target = user
-            channel_obj = conf.channel('privmsg')
+            channel_obj = self._conf.channel('privmsg')
         else:
             target = channel
-            channel_obj = conf.channel(channel)
+            channel_obj = self._conf.channel(channel)
         _ = channel_obj.translate
         if channel_obj.is_usable('lol') and _lol_regex.search(message):
             self.do_lol(user, channel, _)
@@ -374,7 +374,7 @@ class Infobat(irc.IRCClient):
 
     @defer.inlineCallbacks
     def updateBan(self, user, channel, mode_set, mode, mask):
-        channel_obj = conf.channel(channel)
+        channel_obj = self._conf.channel(channel)
         if not channel_obj.have_ops:
             return
         _ = channel_obj.translate
@@ -529,7 +529,9 @@ class Infobat(irc.IRCClient):
                         mask = new_mask
 
         auth = yield self.dbpool.add_ban_auth(rowid)
-        url = urljoin(conf['web.url'], '/bans/edit/%s/%s' % (rowid, auth)).encode()
+        url = urljoin(
+            self._conf['web.url'], '/bans/edit/%s/%s' % (rowid, auth)
+        ).encode()
         self.msg(nick, _(u'to enter and edit details about this ban, please visit %s') % (url,))
 
     def _deopSelf(self):
@@ -540,7 +542,7 @@ class Infobat(irc.IRCClient):
     def _expireBans(self):
         expired = yield self.dbpool.get_expired_bans()
         for channel, it in itertools.groupby(expired, operator.itemgetter(0)):
-            if not conf.channel(channel).have_ops:
+            if not self._conf.channel(channel).have_ops:
                 continue
             yield self.ensureOps(channel)
             for _, mask, mode in it:
@@ -676,7 +678,10 @@ class InfobatFactory(protocol.ReconnectingClientFactory):
     maxDelay = 120
     lastProtocol = None
 
+    def __init__(self, conf):
+        self._conf = conf
+
     def buildProtocol(self, addr):
-        self.lastProtocol = p = self.protocol()
+        self.lastProtocol = p = self.protocol(self._conf)
         p.factory = self
         return p

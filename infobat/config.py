@@ -50,7 +50,7 @@ class Channel(object):
         return self._conf.translate(message, lang=self.lang,
             encoding=self.encoding)
 
-class _Config(object):
+class InfobatConfig(object):
     def __init__(self):
         self.config = {}
         self.channels = {}
@@ -122,7 +122,4 @@ class _Config(object):
         return t.ugettext(message).encode(encoding)
 
     def __repr__(self):
-        return '_Config(%r)' % (self.config,)
-
-# global config object
-conf = _Config()
+        return 'InfobatConfig(%r)' % (self.config,)
