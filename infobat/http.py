@@ -3,7 +3,6 @@ from twisted.internet import reactor
 from twisted.web import client, server, http_headers
 from genshi.template import TemplateLoader
 from infobat.database import NoSuchBan
-from infobat.config import conf
 from infobat.util import parse_time_string
 from klein.resource import KleinResource
 from klein.decorators import expose
@@ -22,14 +21,51 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.waiting = 0
             self.deferred.callback((page, self))
 
-def get_page(*a, **kw):
-    if 'postdata' in kw:
-        kw['bodyProducer'] = client.FileBodyProducer(io.BytesIO(kw.pop('postdata')))
-    if 'headers' in kw:
-        kw['headers'] = http_headers.Headers(kw.pop('headers'))
-    return client.BrowserLikeRedirectAgent(client.Agent(reactor))\
-        .request(*a, **kw)\
-        .addCallback(lambda resp: client.readBody(resp).addCallback(lambda body: (body, resp)))
+def get_page(url, *a, **kw):
+    scheme, host, port, path = _parse(url)
+    factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
+    reactor.connectTCP(host, port, factory)
+    return factory.deferred
+
+# TODO: Replace this hack with something supportable.
+from urlparse import urlunparse
+from twisted.web.http import urlparse
+# Borrowed from Twisted 13.0.0
+def _parse(url, defaultPort=None):
+    """
+    Split the given URL into the scheme, host, port, and path.
+    @type url: C{str}
+    @param url: An URL to parse.
+    @type defaultPort: C{int} or C{None}
+    @param defaultPort: An alternate value to use as the port if the URL does
+    not include one.
+    @return: A four-tuple of the scheme, host, port, and path of the URL.  All
+    of these are C{str} instances except for port, which is an C{int}.
+    """
+    url = url.strip()
+    parsed = urlparse(url)
+    scheme = parsed[0]
+    path = urlunparse(('', '') + parsed[2:])
+
+    if defaultPort is None:
+        if scheme == 'https':
+            defaultPort = 443
+        else:
+            defaultPort = 80
+
+    host, port = parsed[1], defaultPort
+    if ':' in host:
+        host, port = host.split(':')
+        try:
+            port = int(port)
+        except ValueError:
+            port = defaultPort
+
+    if path == '':
+        path = '/'
+
+    return scheme, host, port, path
+
 
 def renderTemplate(request, tmpl, **kwargs):
     request.setHeader('Content-type', 'text/html; charset=utf-8')
@@ -95,6 +131,6 @@ class InfobatResource(KleinResource):
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=False, show_recent_expiration=False)
 
-def makeSite(dbpool):
-    loader = TemplateLoader(conf['web.root'], auto_reload=True)
+def makeSite(templates_dir, dbpool):
+    loader = TemplateLoader(templates_dir, auto_reload=True)
     return server.Site(InfobatResource(loader, dbpool))

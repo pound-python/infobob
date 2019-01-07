@@ -1,5 +1,4 @@
 from twisted.enterprise import adbapi
-from infobat.config import conf
 from functools import partial
 import dateutil.tz
 import datetime
@@ -38,16 +37,12 @@ _ADD_HOST_TO_USER = """
 """
 
 class InfobatDatabaseRunner(object):
-    def __init__(self, text_factory=str):
-        self._text_factory = text_factory
+    def __init__(self, conf):
+        self._conf = conf
         self.dbpool = adbapi.ConnectionPool(
-            'sqlite3', conf['database.sqlite.db_file'],
+            'sqlite3', self._conf['database.sqlite.db_file'],
             check_same_thread=False,
-            cp_openfun=self._setup_connection,
             detect_types=sqlite3.PARSE_COLNAMES)
-
-    def _setup_connection(self, conn):
-        conn.text_factory = self._text_factory
 
     def close(self):
         self.dbpool.close()
@@ -181,7 +176,7 @@ class InfobatDatabaseRunner(object):
             )
         """)
         txn.executemany("INSERT INTO unsure_bans VALUES (?, ?, ?)", bans)
-        expire_at = time.time() + conf.channel(channel).default_ban_time
+        expire_at = time.time() + self._conf.channel(channel).default_ban_time
         reason = time.strftime("ban pulled from banlist on %F")
         txn.execute("""
             INSERT INTO bans
@@ -213,7 +208,7 @@ class InfobatDatabaseRunner(object):
     @interaction
     def add_ban(self, txn, channel, host, mask, mode):
         now = time.time()
-        expire_at = now + conf.channel(channel).default_ban_time
+        expire_at = now + self._conf.channel(channel).default_ban_time
         txn.execute("""
             INSERT INTO bans
                         (channel, mask, mode, set_at, set_by, expire_at)
