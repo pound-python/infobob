@@ -24,23 +24,23 @@ for name, numeric in numeric_addendum.iteritems():
     irc.numeric_to_symbolic[numeric] = name
     irc.symbolic_to_numeric[name] = numeric
 
-_lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+)z*\b', re.I)
+_lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+|lel|kek)z*\b', re.I)
 _lol_message = '%s is a no-LOL zone.'
 
 _etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
     'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
-    'meetingworlds.com', 'netpad.com.br', 'openetherpad.org', 'titanpad.com',
+    'meetingworlds.com', 'netpad.com.br', 'openetherpad.org',
     'pad.telecomix.org']
 
 _etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
 
 _bad_pastebin_regex = re.compile(
     r'((?:https?://)?((?:[a-z0-9-]+\.)*)([ph]astebin\.(?:com|org|ca)'
-    r'|ospaste\.com|%s)/)([a-z0-9]+)(?:\.[a-z0-9]+|/)?' % (_etherpad_like_regex,), re.I)
+    r'|ospaste\.com|%s)/)(?:raw\.php\?i=)?([a-z0-9]+)(?:\.[a-z0-9]+|/)?' % (_etherpad_like_regex,), re.I)
 
 _pastebin_raw = {
     'hastebin.com': 'http://%shastebin.com/raw/%s',
-    'pastebin.com': 'http://%spastebin.com/raw.php?i=%s',
+    'pastebin.com': 'http://%spastebin.com/raw/%s',
     'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
     'pastebin.ca': 'http://%spastebin.ca/raw/%s',
     'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
