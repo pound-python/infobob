@@ -4,8 +4,7 @@ from twisted.web import client, server
 from genshi.template import TemplateLoader
 from infobat.database import NoSuchBan
 from infobat.util import parse_time_string
-from klein.resource import KleinResource
-from klein.decorators import expose
+import klein
 import itertools
 import operator
 
@@ -73,13 +72,14 @@ def renderTemplate(request, tmpl, **kwargs):
                   .render('html', doctype='html5', encoding='utf-8'))
     request.finish()
 
-class InfobatResource(KleinResource):
+class InfobatWebUI(object):
+    app = klein.Klein()
+
     def __init__(self, loader, dbpool):
-        super(InfobatResource, self).__init__()
         self.loader = loader
         self.dbpool = dbpool
 
-    @expose('/bans')
+    @app.route('/bans')
     @inlineCallbacks
     def bans(self, request):
         bans = yield self.dbpool.get_active_bans()
@@ -87,8 +87,8 @@ class InfobatResource(KleinResource):
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=False, show_recent_expiration=False)
 
-    @expose('/bans/expired')
-    @expose('/bans/expired/<count:int>')
+    @app.route('/bans/expired')
+    @app.route('/bans/expired/<int:count>')
     @inlineCallbacks
     def expiredBans(self, request, count=10):
         bans = yield self.dbpool.get_recently_expired_bans(count)
@@ -97,7 +97,7 @@ class InfobatResource(KleinResource):
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=True, show_recent_expiration=True)
 
-    @expose('/bans/all')
+    @app.route('/bans/all')
     @inlineCallbacks
     def allBans(self, request):
         bans = yield self.dbpool.get_all_bans()
@@ -105,14 +105,14 @@ class InfobatResource(KleinResource):
         renderTemplate(request, self.loader.load('bans.html'),
             bans=bans, show_unset=True, show_recent_expiration=False)
 
-    @expose('/bans/edit/<rowid>/<auth>', methods=['GET', 'HEAD'])
+    @app.route('/bans/edit/<rowid>/<auth>', methods=['GET', 'HEAD'])
     @inlineCallbacks
     def editBan(self, request, rowid, auth):
         ban = yield self.dbpool.get_ban_with_auth(rowid, auth)
         renderTemplate(request, self.loader.load('edit_ban.html'),
             ban=ban, message=None)
 
-    @expose('/bans/edit/<rowid>/<auth>', methods=['POST'])
+    @app.route('/bans/edit/<rowid>/<auth>', methods=['POST'])
     @inlineCallbacks
     def postEditBan(self, request, rowid, auth):
         ban = yield self.dbpool.get_ban_with_auth(rowid, auth)
@@ -132,4 +132,5 @@ class InfobatResource(KleinResource):
 
 def makeSite(templates_dir, dbpool):
     loader = TemplateLoader(templates_dir, auto_reload=True)
-    return server.Site(InfobatResource(loader, dbpool))
+    webui = InfobatWebUI(loader, dbpool)
+    return server.Site(webui.app.resource())

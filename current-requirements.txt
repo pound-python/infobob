@@ -3,4 +3,4 @@ lxml==3.6.0
 Pygments==1.4
 python-dateutil==2.5.3
 Twisted[tls]==16.1.1
-git+git://github.com/twisted/klein.git@7cf3741070cba4d4e0016a7175158ec5993fd7f2
+klein
