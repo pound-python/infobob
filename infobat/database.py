@@ -362,8 +362,6 @@ class InfobatDatabaseRunner(object):
 
     @interaction
     def update_ban_by_rowid(self, txn, rowid, expire_at, reason):
-        # TODO: Remove this print
-        print `txn, rowid, expire_at, reason`
         txn.execute("""
             UPDATE bans
             SET    expire_at = ?,
