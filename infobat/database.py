@@ -6,6 +6,16 @@ import sqlite3
 import time
 import uuid
 
+
+# TODO: Clarify the semantics of the bans table.
+#       Currently they are quite unclear, and are not symmetric between
+#       `get_expired_bans` and `get_recently_expired_bans`.
+#       Note that "ban is expired" and "ban has been unset" do NOT
+#       imply the other. The database should be the single source of
+#       truth for the *intention* of the chanops regarding the state of
+#       the channel's banlist, and the bot should (periodically) ensure
+#       that this intention declaration is reflected in the banlist state.
+
 local = dateutil.tz.tzlocal()
 sqlite3.register_adapter(datetime.datetime,
     lambda x: time.mktime(x.astimezone(local).timetuple()))
@@ -352,7 +362,6 @@ class InfobatDatabaseRunner(object):
 
     @interaction
     def update_ban_by_rowid(self, txn, rowid, expire_at, reason):
-        print `txn, rowid, expire_at, reason`
         txn.execute("""
             UPDATE bans
             SET    expire_at = ?,
