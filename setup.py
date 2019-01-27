@@ -17,7 +17,7 @@ setup(
     author_email='_@habnab.it',
     maintainer='Colin Dunklau',
     maintainer_email='colin.dunklau@gmail.com',
-    packages=['infobat', 'infobat.tests'],
+    packages=['infobat', 'infobat.tests', 'twisted.plugins'],
     include_package_data=True,
     install_requires=install_requires,
 )
