@@ -56,7 +56,7 @@ class InfobatServiceMaker(object):
 
         self.webService = internet.TCPServer(
             conf['web.port'],
-            http.makeSite(conf['web.root'], conf.dbpool))
+            http.makeSite(http.DEFAULT_TEMPLATES_DIR, conf.dbpool))
         self.webService.setServiceParent(multiService)
 
         return multiService

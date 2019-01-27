@@ -13,10 +13,7 @@ from twisted.web.iweb import IBodyProducer
 from twisted.trial.unittest import TestCase as TrialTestCase
 from zope.interface import implementer
 
-from infobat.http import makeSite
-
-# TODO: Relocate templates inside infobat/ package
-_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), '../../web')
+from infobat.http import makeSite, DEFAULT_TEMPLATES_DIR
 
 
 class WebUITestCase(TrialTestCase):
@@ -25,7 +22,7 @@ class WebUITestCase(TrialTestCase):
 
     @defer.inlineCallbacks
     def startWebUI(self, dbpool_fake):
-        self.site = makeSite(_TEMPLATES_DIR, dbpool_fake)
+        self.site = makeSite(DEFAULT_TEMPLATES_DIR, dbpool_fake)
         self.endpoint = endpoints.TCP4ServerEndpoint(reactor, 8888)
         self.listeningPort = yield self.endpoint.listen(self.site)
         self.addCleanup(self.listeningPort.stopListening)

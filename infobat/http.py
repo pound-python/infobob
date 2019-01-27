@@ -1,12 +1,16 @@
+import os.path
+import itertools
+import operator
+
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet import reactor
 from twisted.web import client, server
 from genshi.template import TemplateLoader
+import klein
+
 from infobat.database import NoSuchBan
 from infobat.util import parse_time_string
-import klein
-import itertools
-import operator
+
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
     handleStatus_301 = handleStatus_302 = handleStatus_302 = lambda self: None
@@ -63,6 +67,9 @@ def _parse(url, defaultPort=None):
         path = '/'
 
     return scheme, host, port, path
+
+
+DEFAULT_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 
 def renderTemplate(request, tmpl, **kwargs):
