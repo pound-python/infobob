@@ -1,2 +1,2 @@
-recursive-include infobat/locale *.pot *.po *.mo
-recursive-include infobat/templates *.html
+recursive-include infobob/locale *.pot *.po *.mo
+recursive-include infobob/templates *.html

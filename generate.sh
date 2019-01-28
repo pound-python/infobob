@@ -1,9 +1,9 @@
 #!/bin/bash
 
-xgettext -d infobat --copyright-holder="Aaron Gallagher" \
-    --package-name="infobat" --package-version="0.1r$(bzr revno)" \
-    --msgid-bugs-address="habnabit@gmail.com" -p infobat/locale/infobat/ \
-    --foreign-user -F infobat/*.py --from-code=utf-8
-mv infobat/locale/infobat/infobat.po infobat/locale/infobat/infobat.pot
-msginit -i infobat/locale/infobat/infobat.pot -o infobat/locale/infobat/en.po \
+xgettext -d infobob --copyright-holder="Aaron Gallagher" \
+    --package-name="infobob" --package-version="0.1r$(bzr revno)" \
+    --msgid-bugs-address="habnabit@gmail.com" -p infobob/locale/infobob/ \
+    --foreign-user -F infobob/*.py --from-code=utf-8
+mv infobob/locale/infobob/infobob.po infobob/locale/infobob/infobob.pot
+msginit -i infobob/locale/infobob/infobob.pot -o infobob/locale/infobob/en.po \
     -l en --no-translator

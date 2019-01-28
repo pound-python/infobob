@@ -1,11 +1,11 @@
 import unittest
 import datetime
 
-from infobat import util
+from infobob import util
 
 
 class TestParseRelativeTimeString(unittest.TestCase):
-    """Test infobat.util.parse_relative_time_string ."""
+    """Test infobob.util.parse_relative_time_string ."""
 
     def test_empty(self):
         with self.assertRaises(ValueError):

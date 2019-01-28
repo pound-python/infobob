@@ -50,7 +50,7 @@ class Channel(object):
         return self._conf.translate(message, lang=self.lang,
             encoding=self.encoding)
 
-class InfobatConfig(object):
+class InfobobConfig(object):
     def __init__(self):
         self.config = {}
         self.channels = {}
@@ -110,7 +110,7 @@ class InfobatConfig(object):
         if encoding is None:
             encoding = self['misc.locale.default_encoding']
         try:
-            t = gettext.translation('infobat', self['misc.locale.dir'],
+            t = gettext.translation('infobob', self['misc.locale.dir'],
                 languages=langs)
         except IOError:
             warnings.warn('Translation not found for %r' % (lang,))
@@ -122,4 +122,4 @@ class InfobatConfig(object):
         return t.ugettext(message).encode(encoding)
 
     def __repr__(self):
-        return 'InfobatConfig(%r)' % (self.config,)
+        return 'InfobobConfig(%r)' % (self.config,)

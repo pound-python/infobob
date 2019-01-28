@@ -8,14 +8,14 @@
     "database": {
         "dbm": {
             "sync_time": 10,
-            "db_file": "infobat.chainsdb",
+            "db_file": "infobob.chainsdb",
             "order": 8,
             "fragment": 4090,
             "page_size": 32768,
             "fill_factor": 31
         },
         "sqlite": {
-            "db_file": "infobat.sqlite"
+            "db_file": "infobob.sqlite"
         }
     },
     "misc": {

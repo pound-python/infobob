@@ -6,10 +6,10 @@ from twisted.plugin import IPlugin
 from twisted.python import usage
 from twisted.application import internet, service
 from twisted.application.service import IServiceMaker
-from infobat.config import InfobatConfig
-from infobat import irc, database, http
+from infobob.config import InfobobConfig
+from infobob import irc, database, http
 
-class InfobatOptions(usage.Options):
+class InfobobOptions(usage.Options):
     def parseArgs(self, *args):
         if len(args) == 1:
             self.config, = args
@@ -17,22 +17,22 @@ class InfobatOptions(usage.Options):
             self.opt_help()
 
     def getSynopsis(self):
-        return 'Usage: twistd [options] infobat <config file>'
+        return 'Usage: twistd [options] infobob <config file>'
 
-class InfobatServiceMaker(object):
+class InfobobServiceMaker(object):
     implements(IServiceMaker, IPlugin)
-    tapname = "infobat"
+    tapname = "infobob"
     description = "An irc bot!"
-    options = InfobatOptions
+    options = InfobobOptions
 
     def makeService(self, options):
         multiService = service.MultiService()
 
-        conf = InfobatConfig()
+        conf = InfobobConfig()
         with open(options.config) as cfgFile:
             conf.load(cfgFile)
         conf.config_loc = options.config
-        self.ircFactory = irc.InfobatFactory(conf)
+        self.ircFactory = irc.InfobobFactory(conf)
         clientService = internet.TCPClient
         if conf['irc.ssl']:
             clientService = partial(internet.SSLClient,
@@ -41,7 +41,7 @@ class InfobatServiceMaker(object):
             conf['irc.server'], conf['irc.port'], self.ircFactory)
         self.ircService.setServiceParent(multiService)
 
-        conf.dbpool = database.InfobatDatabaseRunner(conf)
+        conf.dbpool = database.InfobobDatabaseRunner(conf)
 
         if (conf['misc.manhole.socket'] is not None
                 and conf['misc.manhole.passwd_file']):
