@@ -170,6 +170,37 @@ class WebUITestCase(TrialTestCase):
         self.assertIn(b'they lost their chance', content)
         # TODO: Test that other expected bits appear.
 
+    @defer.inlineCallbacks
+    def test_post_edit_ban_errors_sanely_on_bad_expiry(self):
+        ban = (
+            b'#project', b'$a:baduser', b'b',
+            dt('2018-03-14T15:09:26'), b'someop!foo',
+            dt('2018-03-21T15:09:26'), b'bad behavior', None, b'',
+        )
+        dbpool = FakeObj()
+        dbpool.get_ban_with_auth = DeferredSequentialReturner([ban])
+        dbpool.update_ban_by_rowid = DeferredSequentialReturner([None])
+        yield self.startWebUI(dbpool)
+
+        res, content = yield self.post(
+            b'/bans/edit/5/deadbeef',
+            {
+                # 1day is invalid, should be +1day.
+                b'expire_at': b'1day',
+                b'reason': b'they lost their chance',
+            },
+        )
+        self.assertEqual(res.code, 200)
+        self.assertIn(
+          b"<p>Invalid expiration timestamp or relative date '1day'",
+          content,
+        )
+        self.assertIn(b'#project', content)
+        self.assertIn(b'never', content)
+        self.assertIn(b'$a:baduser', content)
+        self.assertIn(b'bad behavior', content)
+        # TODO: Test that other expected bits appear.
+
 
 @implementer(IBodyProducer)
 class XWWWFormUrlencodedProducer(object):
