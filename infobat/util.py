@@ -1,10 +1,11 @@
-from twisted.internet import defer, task
 from datetime import datetime
+import time
+import re
+
+from twisted.internet import defer, task
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
 from dateutil.tz import tzlocal
-import time
-import re
 
 local = tzlocal()
 ISOFORMAT = '%Y-%m-%dT%H:%M:%S'
@@ -44,7 +45,8 @@ def delta_to_string(_, delta):
         )
     return timestr
 
-_time_coefficients = {
+
+_TIME_COEFFICIENTS = {
     's': 'seconds', 'second': 'seconds', 'seconds': 'seconds',
     'min': 'minutes', 'minute': 'minutes', 'minutes': 'minutes',
     'h': 'hours', 'hour': 'hours', 'hours': 'hours',
@@ -53,6 +55,7 @@ _time_coefficients = {
     'mo': 'months', 'month': 'months', 'months': 'months',
     'y': 'years', 'yr': 'years', 'year': 'years', 'years': 'years',
 }
+
 def parse_time_string(s):
     s = s.strip()
     if not s.startswith('+'):
@@ -60,16 +63,18 @@ def parse_time_string(s):
     args = parse_relative_time_string(s)
     return datetime.now(local) + relativedelta(**args)
 
-_time_regex = re.compile(
+
+_TIME_REGEX = re.compile(
     r'(?: ^\+ | (?!^)\+?) ([0-9]+) ([^0-9+]*)', re.VERBOSE)
-def  parse_relative_time_string(s):
+
+def parse_relative_time_string(s):
   s = ''.join(s.split())
   parsed = {}
-  for m in _time_regex.finditer(s):
+  for m in _TIME_REGEX.finditer(s):
       quantity, unit = m.groups()
       quantity = int(quantity)
       try:
-          unit = _time_coefficients[unit.lower()]
+          unit = _TIME_COEFFICIENTS[unit.lower()]
       except KeyError:
           raise ValueError("Invalid unit %r" % (unit,))
 

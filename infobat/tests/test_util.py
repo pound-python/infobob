@@ -1,9 +1,8 @@
 import unittest
 import datetime
 
-import mock
-
 from infobat import util
+
 
 class TestParseRelativeTimeString(unittest.TestCase):
     """Test infobat.util.parse_relative_time_string ."""
@@ -54,7 +53,7 @@ class TestParseRelativeTimeString(unittest.TestCase):
         expected = dict(seconds=3)
         # I have raged because of this.
         self.assertEqual(expected, util.parse_relative_time_string("+3s"))
-        self.assertEqual(expected, util.parse_relative_time_string(" +3s")) 
+        self.assertEqual(expected, util.parse_relative_time_string(" +3s"))
         self.assertEqual(expected, util.parse_relative_time_string("+ 3s"))
         self.assertEqual(expected, util.parse_relative_time_string("+3 s"))
         self.assertEqual(expected, util.parse_relative_time_string("+3s "))
