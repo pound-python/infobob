@@ -5,11 +5,15 @@ import operator
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet import reactor
 from twisted.web import client, server
+from twisted import logger
 from genshi.template import TemplateLoader
 import klein
 
 from infobob.database import NoSuchBan
 from infobob.util import parse_time_string
+
+
+log = logger.Logger()
 
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
@@ -23,11 +27,32 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.waiting = 0
             self.deferred.callback((page, self))
 
+
+def _cbLogPageDetails(page_and_factory, url):
+    page, fac = page_and_factory
+    log.info(
+        u'from {url!r} got {status} {message}, {length} bytes',
+        url=url,
+        status=fac.status,
+        message=fac.message,
+        length=len(page),
+    )
+    return page_and_factory
+
+
+def _ebLogFailure(f, message, **formatparams):
+    log.failure(message, f, **formatparams)
+    return f
+
+
 def get_page(url, *a, **kw):
     scheme, host, port, path = _parse(url)
     factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
     reactor.connectTCP(host, port, factory)
-    return factory.deferred
+    dfd = factory.deferred
+    dfd.addCallback(_cbLogPageDetails, url)
+    dfd.addErrback(_ebLogFailure, u'Failed fetching {url!r}', url=url)
+    return dfd
 
 # TODO: Replace this hack with something supportable.
 from urlparse import urlunparse
