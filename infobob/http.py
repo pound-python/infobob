@@ -29,11 +29,13 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
 
 
 def _cbLogPageDetails(page_and_factory, url):
-    page, _ = page_and_factory
+    page, fac = page_and_factory
     log.info(
-        u'Retrieved {length} bytes from {url!r}',
-        length=len(page),
+        u'from {url!r} got {status} {message}, {length} bytes',
         url=url,
+        status=fac.status,
+        message=fac.message,
+        length=len(page),
     )
     return page_and_factory
 
