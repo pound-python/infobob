@@ -1,11 +1,11 @@
-# Portuguese translations for infobat
-# Traduções em português para o pacote infobat
+# Portuguese translations for infobob
+# Traduções em português para o pacote infobob
 # This file is put in the public domain.
 # Clóvis Fabrício Costa <nosklo@gmail.com>, 2010.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: infobat 0.1r67\n"
+"Project-Id-Version: infobob 0.1r67\n"
 "Report-Msgid-Bugs-To: habnabit@gmail.com\n"
 "POT-Creation-Date: 2010-05-09 01:32-0300\n"
 "PO-Revision-Date: 2010-05-09 02:03-0300\n"
@@ -16,12 +16,12 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: infobat/irc.py:245
+#: infobob/irc.py:245
 #, python-format
 msgid "no triggers in %s."
 msgstr "%s não possui triggers."
 
-#: infobat/irc.py:328
+#: infobob/irc.py:328
 #, python-format
 msgid ""
 "in the future, please use a less awful pastebin (e.g. paste.pocoo.org) "
@@ -30,67 +30,67 @@ msgstr ""
 "por favor, da próxima vez use um site menos terrível que %s (por exemplo "
 "paste.pocoo.org)."
 
-#: infobat/irc.py:346
+#: infobob/irc.py:346
 #, python-format
 msgid "%(url)s (repasted for %(user)s)"
 msgstr "%(url)s (recolado para %(user)s)"
 
-#: infobat/irc.py:357 infobat/irc.py:383 infobat/irc.py:395
+#: infobob/irc.py:357 infobob/irc.py:383 infobob/irc.py:395
 #, python-format
 msgid "Error: %r"
 msgstr "Erro: %r"
 
-#: infobat/irc.py:406
+#: infobob/irc.py:406
 #, python-format
 msgid "(... %(nlines)d lines, entire response in %(url)s ...)"
 msgstr "(... %(nlines)d linhas, resposta completa em %(url)s ...)"
 
-#: infobat/irc.py:421
+#: infobob/irc.py:421
 msgid "Done."
 msgstr "Concluído."
 
-#: infobat/irc.py:423
+#: infobob/irc.py:423
 msgid "Database not loaded."
 msgstr "Banco de dados não carregado."
 
-#: infobat/irc.py:433
+#: infobob/irc.py:433
 msgid "Database unlocked."
 msgstr "Banco de dados destrancado."
 
-#: infobat/irc.py:435 infobat/irc.py:444
+#: infobob/irc.py:435 infobob/irc.py:444
 msgid "Database was unlocked."
 msgstr "Banco de dados estava destrancado."
 
-#: infobat/irc.py:442
+#: infobob/irc.py:442
 msgid "Database locked."
 msgstr "Banco de dados trancado."
 
-#: infobat/irc.py:452
+#: infobob/irc.py:452
 #, python-format
 msgid "%d days"
 msgstr "%d dias"
 
-#: infobat/irc.py:456
+#: infobob/irc.py:456
 #, python-format
 msgid "%d hours"
 msgstr "%d horas"
 
-#: infobat/irc.py:458
+#: infobob/irc.py:458
 #, python-format
 msgid "%d minutes"
 msgstr "%d minutos"
 
-#: infobat/irc.py:460
+#: infobob/irc.py:460
 #, python-format
 msgid "%d seconds"
 msgstr "%d segundos"
 
-#: infobat/irc.py:466
+#: infobob/irc.py:466
 #, python-format
 msgid "%(group)s and %(last)s"
 msgstr "%(group)s e %(last)s"
 
-#: infobat/irc.py:470
+#: infobob/irc.py:470
 #, python-format
 msgid ""
 "I have been online for %(time_online)s. In that time, I've processed %"
@@ -101,24 +101,24 @@ msgstr ""
 "d caracteres e gerei %(chaincount)d cadeias. Faço referência neste momento à "
 "%(dblen)d cadeias com %(begin)d inícios (%(actions)d ações)."
 
-#: infobat/irc.py:489
+#: infobob/irc.py:489
 msgid "shakes the psychic black sphere."
 msgstr "olha para sua bola de cristal."
 
-#: infobat/irc.py:495
+#: infobob/irc.py:495
 #, python-format
 msgid "It says: \"%s\""
 msgstr "Ela diz: \"%s\""
 
-#: infobat/irc.py:502
+#: infobob/irc.py:502
 msgid "line too short."
 msgstr "linha muito curta."
 
-#: infobat/irc.py:511
+#: infobob/irc.py:511
 msgid "inf"
 msgstr "inf"
 
-#: infobat/irc.py:513
+#: infobob/irc.py:513
 #, python-format
 msgid ""
 "%(chance)0.6f%% chance (1 in %(inverse)s) across %(prob_len)d probabilities; "
@@ -129,6 +129,6 @@ msgstr ""
 "probabilidades; média %(avg)0.6f%%, desvio padrão %(deviation)0.6f%%, mínimo "
 "%(min_prob)0.6f%%, máximo %(max_prob)0.6f%%."
 
-#: infobat/irc.py:528
+#: infobob/irc.py:528
 msgid "Okay!"
 msgstr "Certo!"

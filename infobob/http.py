@@ -8,8 +8,8 @@ from twisted.web import client, server
 from genshi.template import TemplateLoader
 import klein
 
-from infobat.database import NoSuchBan
-from infobat.util import parse_time_string
+from infobob.database import NoSuchBan
+from infobob.util import parse_time_string
 
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
@@ -79,7 +79,7 @@ def renderTemplate(request, tmpl, **kwargs):
                   .render('html', doctype='html5', encoding='utf-8'))
     request.finish()
 
-class InfobatWebUI(object):
+class InfobobWebUI(object):
     app = klein.Klein()
 
     def __init__(self, loader, dbpool):
@@ -150,5 +150,5 @@ class InfobatWebUI(object):
 
 def makeSite(templates_dir, dbpool):
     loader = TemplateLoader(templates_dir, auto_reload=True)
-    webui = InfobatWebUI(loader, dbpool)
+    webui = InfobobWebUI(loader, dbpool)
     return server.Site(webui.app.resource())

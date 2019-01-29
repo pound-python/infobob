@@ -2,8 +2,8 @@ from twisted.words.protocols import irc
 from twisted.internet import reactor, defer, error, protocol, task
 from twisted.python import log
 from twisted.web import xmlrpc
-from infobat.redent import redent
-from infobat import database, http, util
+from infobob.redent import redent
+from infobob import database, http, util
 from datetime import timedelta
 from urllib import urlencode
 from urlparse import urljoin
@@ -57,12 +57,12 @@ _MAX_LINES = 2
 class CouldNotPastebinError(Exception):
     pass
 
-class Infobat(irc.IRCClient):
+class Infobob(irc.IRCClient):
     identified = False
     outstandingPings = 0
 
-    sourceURL = 'https://code.launchpad.net/~pound-python/infobat/infobob'
-    versionName = 'infobat-infobob'
+    sourceURL = 'https://github.com/pound-python/infobob'
+    versionName = 'infobob'
     versionNum = 'latest'
     versionEnv = 'twisted'
 
@@ -347,7 +347,7 @@ class Infobat(irc.IRCClient):
 
         if command:
             s_command = command.split(' ')
-            command_func = getattr(self, 'infobat_' + s_command[0], None)
+            command_func = getattr(self, 'infobob_' + s_command[0], None)
             if command_func is not None and channel_obj.is_usable(s_command[0]):
                 command_func(target, channel_obj, *s_command[1:])
 
@@ -607,7 +607,7 @@ class Infobat(irc.IRCClient):
             dict(url=repasted_url, user=user))
 
     @defer.inlineCallbacks
-    def infobat_redent(self, target, channel, paste_target, *text):
+    def infobob_redent(self, target, channel, paste_target, *text):
         _ = channel.translate
         redented = (
             redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
@@ -635,7 +635,7 @@ class Infobat(irc.IRCClient):
         defer.returnValue(paste_url)
 
     @defer.inlineCallbacks
-    def infobat_codepad(self, target, channel, paste_target, *text):
+    def infobob_codepad(self, target, channel, paste_target, *text):
         _ = channel.translate
         try:
             paste_url = yield self._codepad(' '.join(text))
@@ -646,7 +646,7 @@ class Infobat(irc.IRCClient):
             self.msg(target, '%s, %s' % (paste_target, paste_url))
 
     @defer.inlineCallbacks
-    def infobat_exec(self, target, channel, *text):
+    def infobob_exec(self, target, channel, *text):
         _ = channel.translate
         text = _EXEC_PRELUDE + ' '.join(text)
         try:
@@ -676,17 +676,17 @@ class Infobat(irc.IRCClient):
             for part in response:
                 self.msg(target, part)
 
-    def infobat_print(self, target, channel, *text):
+    def infobob_print(self, target, channel, *text):
         """Alias to print the result, aka eval"""
-        return self.infobat_exec(target, channel, 'print', *text)
+        return self.infobob_exec(target, channel, 'print', *text)
 
-    def infobat_stop(self, target, channel):
+    def infobob_stop(self, target, channel):
         _ = channel.translate
         self.msg(target, _(u'Okay!'))
         reactor.stop()
 
-class InfobatFactory(protocol.ReconnectingClientFactory):
-    protocol = Infobat
+class InfobobFactory(protocol.ReconnectingClientFactory):
+    protocol = Infobob
     maxDelay = 120
     lastProtocol = None
 

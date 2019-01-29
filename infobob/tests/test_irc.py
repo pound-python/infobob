@@ -5,22 +5,22 @@ from twisted.internet import defer
 from twisted.trial.unittest import TestCase as TrialTestCase
 from twisted.test.proto_helpers import StringTransport
 
-from infobat.irc import Infobat
-from infobat.config import InfobatConfig
+from infobob.irc import Infobob
+from infobob.config import InfobobConfig
 
 
 
-class InfobatProtocolTestCase(TrialTestCase):
+class InfobobProtocolTestCase(TrialTestCase):
     def setUp(self):
         self.proto = None
-        self.factory = FakeInfobatFactory()
+        self.factory = FakeInfobobFactory()
         self.transport = StringTransport()
 
     def initProto(self, configStructure, stubTimer=True):
-        conf = InfobatConfig()
+        conf = InfobobConfig()
         conf.load(io.BytesIO(json.dumps(configStructure)))
         conf.dbpool = None
-        self.proto = Infobat(conf)
+        self.proto = Infobob(conf)
         self.proto.factory = self.factory
         self.proto.makeConnection(self.transport)
         if stubTimer:
@@ -80,6 +80,6 @@ class InfobatProtocolTestCase(TrialTestCase):
         self.assertIs(p.identified, False)
 
 
-class FakeInfobatFactory:
+class FakeInfobobFactory:
     def resetDelay(self):
         pass

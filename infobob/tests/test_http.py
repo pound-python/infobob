@@ -13,7 +13,7 @@ from twisted.web.iweb import IBodyProducer
 from twisted.trial.unittest import TestCase as TrialTestCase
 from zope.interface import implementer
 
-from infobat.http import makeSite, DEFAULT_TEMPLATES_DIR
+from infobob.http import makeSite, DEFAULT_TEMPLATES_DIR
 
 
 class WebUITestCase(TrialTestCase):

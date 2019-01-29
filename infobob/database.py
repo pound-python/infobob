@@ -46,7 +46,7 @@ _ADD_HOST_TO_USER = """
     VALUES     (?, ?)
 """
 
-class InfobatDatabaseRunner(object):
+class InfobobDatabaseRunner(object):
     def __init__(self, conf):
         self._conf = conf
         self.dbpool = adbapi.ConnectionPool(
