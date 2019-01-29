@@ -38,11 +38,19 @@ def _cbLogPageDetails(page_and_factory, url):
     return page_and_factory
 
 
+def _ebLogFailure(f, message, **formatparams):
+    log.failure(message, f, **formatparams)
+    return f
+
+
 def get_page(url, *a, **kw):
     scheme, host, port, path = _parse(url)
     factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
     reactor.connectTCP(host, port, factory)
-    return factory.deferred.addCallback(_cbLogPageDetails)
+    dfd = factory.deferred
+    dfd.addCallback(_cbLogPageDetails, url)
+    dfd.addErrback(_ebLogFailure, u'Failed fetching {url!r}', url=url)
+    return dfd
 
 # TODO: Replace this hack with something supportable.
 from urlparse import urlunparse
