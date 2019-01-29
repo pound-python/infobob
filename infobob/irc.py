@@ -1,19 +1,25 @@
-from twisted.words.protocols import irc
-from twisted.internet import reactor, defer, error, protocol, task
-from twisted.python import log
-from twisted.web import xmlrpc
-from infobob.redent import redent
-from infobob import database, http, util
-from datetime import timedelta
-from urllib import urlencode
-from urlparse import urljoin
 import collections
 import itertools
 import traceback
-import lxml.html
 import operator
 import sys
 import re
+from datetime import timedelta
+from urllib import urlencode
+from urlparse import urljoin
+
+from twisted.words.protocols import irc
+from twisted.internet import reactor, defer, error, protocol, task
+from twisted.web import xmlrpc
+from twisted import logger
+import lxml.html
+
+from infobob.redent import redent
+from infobob import database, http, util
+
+
+log = logger.Logger()
+
 
 numeric_addendum = dict(
     RPL_WHOISACCOUNT='330',
@@ -97,12 +103,19 @@ class Infobob(irc.IRCClient):
     def startTimer(self, name, interval, method, *a, **kw):
         def wrap():
             d = defer.maybeDeferred(method, *a, **kw)
-            d.addErrback(log.err, 'error in looper %s' % (name,))
+            d.addErrback(
+                lambda f: log.failure(
+                    u'error in looper {name}',
+                    f,
+                    name=name,
+                )
+            )
             return d
         self._loopers[name] = looper = task.LoopingCall(wrap)
         looper.start(interval)
 
     def stopTimer(self, name):
+        # FIXME: Probable should be self._loopers
         looper = self._looper.pop(name, None)
         if looper is not None:
             looper.stop()
@@ -322,7 +335,9 @@ class Infobob(irc.IRCClient):
             if d is not None:
                 d.callback(message)
                 return
-            log.msg('privmsg from %s: %s' % (user, message))
+            log.info(
+                u'privmsg from {user}: {message}', user=user, message=message
+            )
             target = user
             channel_obj = self._conf.channel('privmsg')
         else:
@@ -573,7 +588,11 @@ class Infobob(irc.IRCClient):
                 new_paste_id = yield proxy.callRemote(
                     'pastes.newPaste', language, data)
             except:
-                log.err()
+                log.failure(
+                    u'Problem pasting to {pastebin} via {url!r}',
+                    pastebin=name,
+                    url=url,
+                )
                 yield self.dbpool.set_latency(name, None)
                 yield self.dbpool.record_is_up(name, False)
                 continue

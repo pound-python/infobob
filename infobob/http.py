@@ -5,11 +5,15 @@ import operator
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet import reactor
 from twisted.web import client, server
+from twisted import logger
 from genshi.template import TemplateLoader
 import klein
 
 from infobob.database import NoSuchBan
 from infobob.util import parse_time_string
+
+
+log = logger.Logger()
 
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
@@ -23,11 +27,22 @@ class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
             self.waiting = 0
             self.deferred.callback((page, self))
 
+
+def _cbLogPageDetails(page_and_factory, url):
+    page, _ = page_and_factory
+    log.info(
+        u'Retrieved {length} bytes from {url!r}',
+        length=len(page),
+        url=url,
+    )
+    return page_and_factory
+
+
 def get_page(url, *a, **kw):
     scheme, host, port, path = _parse(url)
     factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
     reactor.connectTCP(host, port, factory)
-    return factory.deferred
+    return factory.deferred.addCallback(_cbLogPageDetails)
 
 # TODO: Replace this hack with something supportable.
 from urlparse import urlunparse
