@@ -16,6 +16,7 @@ import lxml.html
 
 from infobob.redent import redent
 from infobob import database, http, util
+from infobob.pastebin import Paster, BadPasteRepaster
 
 
 log = logger.Logger()
@@ -32,6 +33,7 @@ for name, numeric in numeric_addendum.iteritems():
 
 _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+|lel|kek)z*\b', re.I)
 _lol_message = '%s is a no-LOL zone.'
+
 
 _etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
     'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
@@ -55,6 +57,7 @@ _pastebin_raw = {
 for ep in _etherpad_like:
     _pastebin_raw[ep] = 'http://%%s%s/ep/pad/export/%%s/latest?format=txt' % (ep,)
 
+
 _EXEC_PRELUDE = """#coding:utf-8
 import os, sys, math, re, random
 """
@@ -74,8 +77,12 @@ class Infobob(irc.IRCClient):
 
     db = dbpool = manhole_service = None
 
-    def __init__(self, conf):
+    def __init__(self, conf, paster=None, repaster=None):
         self._conf = conf
+        self._paster = paster or Paster(self._conf.dbpool)
+        self._repaster = repaster or BadPasteRepaster(
+            self._conf.dbpool, self._paster
+        )
         self.nickname = conf['irc.nickname'].encode()
         if conf['irc.password']:
             self.password = conf['irc.password'].encode()
@@ -347,6 +354,7 @@ class Infobob(irc.IRCClient):
         if channel_obj.is_usable('lol') and _lol_regex.search(message):
             self.do_lol(user, channel, _)
         if channel_obj.is_usable('repaste'):
+            #to_repaste = self._repaster.extractBadPastebinUrls(message)
             to_repaste = set(_bad_pastebin_regex.findall(message))
             if to_repaste:
                 self.repaste(target, user, to_repaste, _)
