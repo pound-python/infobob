@@ -2,7 +2,7 @@ import re
 
 from twisted.internet import reactor
 from twisted.internet import defer
-from twisted.web import client
+from twisted.web import client, xmlrpc
 from twisted import logger
 
 from infobob import database
@@ -53,7 +53,8 @@ class BadPasteRepaster(object):
         Returns a set of length-four tuples, containing these elements
         for each unique bad pastebin URL found:
 
-        -   The scheme (if present) and full domain name
+        -   The scheme (if present), full domain name, and initial
+            slash from path
         -   The subdomain prefix (if present, including trailing dot)
         -   The domain name without any subdomain prefix
         -   The paste ID
@@ -64,7 +65,14 @@ class BadPasteRepaster(object):
 
     @defer.inlineCallbacks
     def repaste(self, pastes):
-        # TODO: Implement (most of) the bot's repaste method.
+        """
+        Collect the contents of the provided pastes, post them onto
+        a different pastebin (all together), and fire the returned
+        Deferred with the URL for the new paste, or None if the same
+        repasting was requested again too soon.
+
+        Caches URLs in the database.
+        """
         urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
         try:
             repasted_url = yield self._db.get_repaste(urls)
@@ -76,7 +84,7 @@ class BadPasteRepaster(object):
             return
 
         defs = [self._getRawPasteContent(paste) for paste in pastes]
-        pastes_data = yield defer.gatherResults(defs)
+        pastes_datas = yield defer.gatherResults(defs)
         if len(pastes_datas) == 1:
             data = pastes_datas[0]
             language = 'python'
@@ -84,7 +92,7 @@ class BadPasteRepaster(object):
             data = '\n'.join(
                 '### %s.py\n%s' % (paste_id, paste_data)
                 for (base, prefix, bin, paste_id), paste_data
-                in zip(pastes, pastes_data)
+                in zip(pastes, pastes_datas)
             )
             language = 'multi'
         repasted_url = yield self._paster.createPaste(language, data)
@@ -94,6 +102,8 @@ class BadPasteRepaster(object):
     def _getRawPasteContent(self, paste):
         """
         Retrieve the raw content from the given paste.
+
+        Returns a Deferred that fires with the paste's content bytes.
         """
         base, prefix, bin, paste_id = paste
         url = _pastebin_raw[bin] % (prefix, paste_id)
@@ -107,8 +117,29 @@ class Paster(object):
     def createPaste(self, language, data):
         # FIXME: Is the language really necessary? Is it a
         #       spacepaste-specific thing?
-        # TODO: Use protocol's `pastebin` method as the basis for this.
-        pass
+        # TODO: Reimplement this to allow for non-spacepaste bins.
+        for name, url in (yield self._db.get_pastebins()):
+            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
+            try:
+                new_paste_id = yield proxy.callRemote(
+                    'pastes.newPaste', language, data)
+            except:
+                log.failure(
+                    u'Problem pasting to {pastebin} via {url!r}',
+                    pastebin=name,
+                    url=url,
+                )
+                yield self._db.set_latency(name, None)
+                yield self._db.record_is_up(name, False)
+                continue
+            else:
+                yield self._db.record_is_up(name, True)
+                defer.returnValue('%s/show/%s/' % (url, new_paste_id))
+        raise CouldNotPastebinError()
+
+
+class CouldNotPastebinError(Exception):
+    pass
 
 
 class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
