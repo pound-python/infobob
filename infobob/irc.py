@@ -35,36 +35,11 @@ _lol_regex = re.compile(r'\b(lo+l[lo]*|rofl+|lmao+|lel|kek)z*\b', re.I)
 _lol_message = '%s is a no-LOL zone.'
 
 
-_etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
-    'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
-    'meetingworlds.com', 'netpad.com.br', 'openetherpad.org',
-    'pad.telecomix.org']
-
-_etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
-
-_bad_pastebin_regex = re.compile(
-    r'((?:https?://)?((?:[a-z0-9-]+\.)*)([ph]astebin\.(?:com|org|ca)'
-    r'|ospaste\.com|%s)/)(?:raw\.php\?i=)?([a-z0-9]+)(?:\.[a-z0-9]+|/)?' % (_etherpad_like_regex,), re.I)
-
-_pastebin_raw = {
-    'hastebin.com': 'http://%shastebin.com/raw/%s',
-    'pastebin.com': 'http://%spastebin.com/raw/%s',
-    'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
-    'pastebin.ca': 'http://%spastebin.ca/raw/%s',
-    'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
-}
-
-for ep in _etherpad_like:
-    _pastebin_raw[ep] = 'http://%%s%s/ep/pad/export/%%s/latest?format=txt' % (ep,)
-
-
 _EXEC_PRELUDE = """#coding:utf-8
 import os, sys, math, re, random
 """
 _MAX_LINES = 2
 
-class CouldNotPastebinError(Exception):
-    pass
 
 class Infobob(irc.IRCClient):
     identified = False
@@ -354,8 +329,7 @@ class Infobob(irc.IRCClient):
         if channel_obj.is_usable('lol') and _lol_regex.search(message):
             self.do_lol(user, channel, _)
         if channel_obj.is_usable('repaste'):
-            #to_repaste = self._repaster.extractBadPastebinUrls(message)
-            to_repaste = set(_bad_pastebin_regex.findall(message))
+            to_repaste = self._repaster.extractBadPasteSpecs(message)
             if to_repaste:
                 self.repaste(target, user, to_repaste, _)
 
@@ -588,48 +562,15 @@ class Infobob(irc.IRCClient):
         yield self.dbpool.add_lol(nick)
         self.msg(nick, _(_lol_message) % channel)
 
-    @defer.inlineCallbacks
     def pastebin(self, language, data):
-        for name, url in (yield self.dbpool.get_pastebins()):
-            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
-            try:
-                new_paste_id = yield proxy.callRemote(
-                    'pastes.newPaste', language, data)
-            except:
-                log.failure(
-                    u'Problem pasting to {pastebin} via {url!r}',
-                    pastebin=name,
-                    url=url,
-                )
-                yield self.dbpool.set_latency(name, None)
-                yield self.dbpool.record_is_up(name, False)
-                continue
-            else:
-                yield self.dbpool.record_is_up(name, True)
-                defer.returnValue('%s/show/%s/' % (url, new_paste_id))
-        raise CouldNotPastebinError()
+        return self._paster.createPaste(language, data)
 
     @defer.inlineCallbacks
     def repaste(self, target, user, pastes, _):
-        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
-        try:
-            repasted_url = yield self.dbpool.get_repaste(urls)
-        except database.TooSoonError:
-            return
+        repasted_url = yield self._repaster.repaste(pastes)
         if repasted_url is None:
-            defs = [http.get_page(_pastebin_raw[bin] % (prefix, paste_id))
-                for base, prefix, bin, paste_id in pastes]
-            pastes_data = yield defer.gatherResults(defs)
-            if len(pastes_data) == 1:
-                data = pastes_data[0][0]
-                language = 'python'
-            else:
-                data = '\n'.join('### %s.py\n%s' % (paste_id, paste)
-                    for (base, prefix, bin, paste_id), (paste, ign)
-                    in zip(pastes, pastes_data))
-                language = 'multi'
-            repasted_url = yield self.pastebin(language, data)
-            yield self.dbpool.add_repaste(urls, repasted_url)
+            return
+
         self.msg(target, _(u'%(url)s (repasted for %(user)s)') %
             dict(url=repasted_url, user=user))
 

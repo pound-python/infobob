@@ -9,9 +9,6 @@ from infobob import database
 
 log = logger.Logger()
 
-# TODO: Write some integration tests for the protocol to verify
-#       the whole repaste workflow, before switching to the new
-#       components.
 
 # TODO: Holy regex batman! Refactor BadPasteRepaster such that the
 #       regex shenanigans are no longer necessary. Probably should
@@ -114,11 +111,13 @@ class Paster(object):
     def __init__(self, db):
         self._db = db
 
+    @defer.inlineCallbacks
     def createPaste(self, language, data):
         # FIXME: Is the language really necessary? Is it a
         #       spacepaste-specific thing?
         # TODO: Reimplement this to allow for non-spacepaste bins.
-        for name, url in (yield self._db.get_pastebins()):
+        available_pastebins = yield self._db.get_pastebins()
+        for name, url in available_pastebins:
             proxy = xmlrpc.Proxy(url + '/xmlrpc/')
             try:
                 new_paste_id = yield proxy.callRemote(
