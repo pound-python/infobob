@@ -18,11 +18,11 @@ WORKDIR /usr/src/app
 COPY --from=0 /usr/src/app/wheelhouse wheelhouse
 RUN pip install ./wheelhouse/*
 
-COPY infobob.cfg.example config.json
-COPY db.schema ./
+COPY infobob.cfg.example db.schema ./
 RUN mkdir -p /app/db
 RUN sqlite3 <db.schema /app/db/infobob.sqlite
 RUN chown -R infobob: /app
 VOLUME /app
 USER infobob
-ENTRYPOINT ["twistd", "--pidfile=", "-n", "infobob", "config.json"]
+ENTRYPOINT ["twistd", "--pidfile=", "-n", "infobob"]
+CMD ["infobob.cfg.example"]

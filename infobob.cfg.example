@@ -27,7 +27,7 @@
         },
         "magic8_file": null,
         "manhole": {
-            "socket_prefix": null,
+            "socket": null,
             "passwd_file": null
         }
     },
