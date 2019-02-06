@@ -1,21 +1,23 @@
 {
     "irc": {
         "nickname": "infotest",
-        "server": "irc.freenode.net",
+        "server": "chat.freenode.net",
+        "port": 6697,
+        "ssl": true,
         "nickserv_pw": null,
         "autojoin": ["#infobob"]
     },
     "database": {
         "dbm": {
             "sync_time": 10,
-            "db_file": "infobob.chainsdb",
+            "db_file": "/app/db/infobob.chainsdb",
             "order": 8,
             "fragment": 4090,
             "page_size": 32768,
             "fill_factor": 31
         },
         "sqlite": {
-            "db_file": "infobob.sqlite"
+            "db_file": "/app/db/infobob.sqlite"
         }
     },
     "misc": {
