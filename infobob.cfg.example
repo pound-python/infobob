@@ -3,7 +3,7 @@
         "nickname": "infotest",
         "server": "irc.freenode.net",
         "nickserv_pw": null,
-        "autojoin": ["#python", "#python-offtopic"]
+        "autojoin": ["#infobob"]
     },
     "database": {
         "dbm": {
@@ -32,7 +32,7 @@
     "channels": {
         "defaults": {
             "commands": [
-                ["allow", "all"],                
+                ["allow", "all"],
                 ["deny", "divine", "lol", "repaste"]
             ],
             "flood_control": [3, 2],
