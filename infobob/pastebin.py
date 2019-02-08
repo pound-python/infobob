@@ -44,6 +44,42 @@ class BadPasteRepaster(object):
         self._db = db
         self._paster = paster
 
+    """
+    NOTES
+
+    First parse the message for all things that look like URLs.
+    Probably use whitespace as boundries but should probably try
+    to handle at least trailing punctuation as reasonably as
+    possible.
+    TODO: Grep logs for these to figure out the forms involved.
+
+    Then parse each URL, hang on to the parsed result, and check
+    the domain against a lookup dict to see if it counts as a
+    "bad" pastebin site. This dict is either straight domain ->
+    BadPastebin, or maybe some nested thing with domain components.
+
+    Hand off each parsed URL structure to the corresponding
+    BadPastebin instance so it can extract some info about it,
+    probably just the paste ID.
+
+    Return a list of "BadPaste" instances, containing the domain
+    and the paste ID.
+
+    Looks like the domains seen are just the regular plus www,
+    no other subdomains. hastebin.com, pastebin.com, and
+    pastebin.ca (and the corresponding www. subdomains) are the
+    only ones present in the db since sometime in 2016,
+    pastebin.ca hasn't been present in db since may 2018, and
+    appears to be down (503 errors). None of the "etherpad-like"
+    bins appear.
+
+    -   pastebin.com IDs appear to be upper and lower alpha plus
+        digits, 8 chars long (probably shouldn't assume this).
+    -   pastebin.ca IDs appear to be purely numeric, 7 chars long.
+    -   hastebin.com IDs appear to be only lowercase alpha, 10
+        chars long.
+    
+    """
     def extractBadPasteSpecs(self, message):
         """
         Find all the "bad" pastebin URLs in a message.
