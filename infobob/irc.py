@@ -273,25 +273,6 @@ class Infobob(irc.IRCClient):
         irc.IRCClient.connectionLost(self, reason)
 
     @defer.inlineCallbacks
-    def _pastebinPing(self):
-        def _eb(_):
-            return None, None
-        def _cb((latency, _), name):
-            return defer.DeferredList([
-                self.dbpool.record_is_up(name, bool(latency)),
-                self.dbpool.set_latency(name, latency),
-            ])
-        def do_ping((name, url)):
-            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
-            d = proxy.callRemote('pastes.getLanguages')
-            util.time_deferred(d)
-            d.addErrback(_eb)
-            d.addCallback(_cb, name)
-            return d
-        pastebins = yield self.dbpool.get_all_pastebins()
-        yield util.parallel(pastebins, 10, do_ping)
-
-    @defer.inlineCallbacks
     def waitForPrivmsgFrom(self, nick, waitFor=1200):
         semaphore = self._waiting_on_queue[nick]
         yield semaphore.acquire()
@@ -564,6 +545,9 @@ class Infobob(irc.IRCClient):
 
     def pastebin(self, language, data):
         return self._paster.createPaste(language, data)
+
+    def _pastebinPing(self):
+        return self._paster.recordPastebinAvailabilities()
 
     @defer.inlineCallbacks
     def repaste(self, target, user, pastes, _):

@@ -6,6 +6,7 @@ from twisted.web import client, xmlrpc
 from twisted import logger
 
 from infobob import database
+from infobob import util
 
 log = logger.Logger()
 
@@ -135,6 +136,27 @@ class Paster(object):
                 yield self._db.record_is_up(name, True)
                 defer.returnValue('%s/show/%s/' % (url, new_paste_id))
         raise CouldNotPastebinError()
+
+    @defer.inlineCallbacks
+    def recordPastebinAvailabilities(self):
+        # TODO: Log attempts, successes, failures.
+        # TODO: Refactor to support non-spacepaste bins.
+        def _eb(_):
+            return None, None
+        def _cb((latency, _), name):
+            return defer.DeferredList([
+                self._db.record_is_up(name, bool(latency)),
+                self._db.set_latency(name, latency),
+            ])
+        def do_ping((name, url)):
+            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
+            d = proxy.callRemote('pastes.getLanguages')
+            util.time_deferred(d)
+            d.addErrback(_eb)
+            d.addCallback(_cb, name)
+            return d
+        pastebins = yield self._db.get_all_pastebins()
+        yield util.parallel(pastebins, 10, do_ping)
 
 
 class CouldNotPastebinError(Exception):
