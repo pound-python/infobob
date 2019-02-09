@@ -48,19 +48,30 @@ class BadPasteRepaster(object):
     NOTES
 
     First parse the message for all things that look like URLs.
-    Probably use whitespace as boundries but should probably try
-    to handle at least trailing punctuation as reasonably as
-    possible.
-    TODO: Grep logs for these to figure out the forms involved.
+    These regexes show the form.
+
+    -   (https?://)(www.)?pastebin.com/[a-z0-9]{4,12}
+    -   (https?://)(www.)?hastebin.com/[a-z]{4,12}(\.[a-z0-9]*)?
+    -   (https?://)(www.)?pastebin.ca/[0-9]{4,12}
+
+    A simple regex to spot domain-looking things followed by a
+    slash should be enough.
 
     Then parse each URL, hang on to the parsed result, and check
     the domain against a lookup dict to see if it counts as a
-    "bad" pastebin site. This dict is either straight domain ->
-    BadPastebin, or maybe some nested thing with domain components.
+    "bad" pastebin site. Parsing the URL should account for the
+    potential lack of the scheme, so check for it and prepend one
+    if necessary.
+
+    This dict is either straight domain -> "BadPastebin" instance,
+    or maybe some nested key-like thing with domain components...
+    but it looks like mapping domain (without subdomain(s)) would
+    be sufficient.
 
     Hand off each parsed URL structure to the corresponding
-    BadPastebin instance so it can extract some info about it,
-    probably just the paste ID.
+    "BadPastebin" instance so it can extract some info about it,
+    probably just the paste ID. "BadPastebin" needs at minimum
+    pasteIDFromPath and contentFromPaste
 
     Return a list of "BadPaste" instances, containing the domain
     and the paste ID.
