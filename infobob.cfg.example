@@ -20,6 +20,10 @@
             "db_file": "/app/db/infobob.sqlite"
         }
     },
+    "web": {
+        "port": 8080,
+        "url": "https://invalid/"
+    },
     "misc": {
         "locale": {
             "default_lang": "en",
