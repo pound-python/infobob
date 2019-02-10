@@ -16,7 +16,7 @@ import lxml.html
 
 from infobob.redent import redent
 from infobob import database, http, util
-from infobob.pastebin import Paster, BadPasteRepaster
+from infobob.pastebin import Paster, make_repaster
 
 
 log = logger.Logger()
@@ -55,7 +55,7 @@ class Infobob(irc.IRCClient):
     def __init__(self, conf, paster=None, repaster=None):
         self._conf = conf
         self._paster = paster or Paster(self._conf.dbpool)
-        self._repaster = repaster or BadPasteRepaster(
+        self._repaster = repaster or make_repaster(
             self._conf.dbpool, self._paster
         )
         self.nickname = conf['irc.nickname'].encode()

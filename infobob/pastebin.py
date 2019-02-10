@@ -15,120 +15,34 @@ from infobob import util
 log = logger.Logger()
 
 
-# TODO: Holy regex batman! Refactor BadPasteRepaster such that the
-#       regex shenanigans are no longer necessary. Probably should
-#       use a _basic_ regex to scan for URLs, then parse them into
-#       interesting parts, and use some other objects to deal with
-#       the differences between the various pastebin flavors.
-_etherpad_like = ['ietherpad.com', 'piratepad.net', 'piratenpad.de',
-    'pad.spline.de', 'typewith.me', 'edupad.ch', 'etherpad.netluchs.de',
-    'meetingworlds.com', 'netpad.com.br', 'openetherpad.org',
-    'pad.telecomix.org']
-
-_etherpad_like_regex = '|'.join(re.escape(ep) for ep in _etherpad_like)
-
-_bad_pastebin_regex = re.compile(
-    r'((?:https?://)?((?:[a-z0-9-]+\.)*)([ph]astebin\.(?:com|org|ca)'
-    r'|ospaste\.com|%s)/)(?:raw\.php\?i=)?([a-z0-9]+)(?:\.[a-z0-9]+|/)?' % (_etherpad_like_regex,), re.I)
-
-_pastebin_raw = {
-    'hastebin.com': 'http://%shastebin.com/raw/%s',
-    'pastebin.com': 'http://%spastebin.com/raw/%s',
-    'pastebin.org': 'http://%spastebin.org/pastebin.php?dl=%s',
-    'pastebin.ca': 'http://%spastebin.ca/raw/%s',
-    'ospaste.com': 'http://%sospaste.com/index.php?dl=%s',
-}
-
-for ep in _etherpad_like:
-    _pastebin_raw[ep] = 'http://%%s%s/ep/pad/export/%%s/latest?format=txt' % (ep,)
+def make_repaster(db, paster):
+    badPastebins = [
+        GenericBadPastebin(
+            u'pastebin.com',
+            [u'www.pastebin.com'],
+            u'([a-z0-9]{4,12})',
+            u'/raw/',
+            retrieveUrlContent,
+        ),
+        GenericBadPastebin(
+            u'pastebin.ca',
+            [u'www.pastebin.ca'],
+            u'([0-9]{4,12})',
+            u'/raw/',
+            retrieveUrlContent,
+        ),
+        GenericBadPastebin(
+            u'hastebin.com',
+            [u'www.hastebin.com'],
+            u'([a-z0-9]{4,12})',
+            u'/raw/',
+            retrieveUrlContent,
+        ),
+    ]
+    return BadPasteRepaster(db, paster, badPastebins)
 
 
 class BadPasteRepaster(object):
-    def __init__(self, db, paster):
-        self._db = db
-        self._paster = paster
-
-    def extractBadPasteSpecs(self, message):
-        """
-        Find all the "bad" pastebin URLs in a message.
-
-        Returns a list of :class:`.BadPaste` instances, one for each
-        unique bad paste URL found.
-        """
-        to_repaste = [
-            BadPaste(basedomain, pasteId)
-            for _, _, basedomain, pasteId
-            in _dedupe(_bad_pastebin_regex.findall(message))
-        ]
-        return to_repaste
-
-    @defer.inlineCallbacks
-    def repaste(self, pastes):
-        """
-        Collect the contents of the provided pastes, post them onto
-        a different pastebin (all together), and fire the returned
-        Deferred with the URL for the new paste, or None if the same
-        repasting was requested again too soon.
-
-        Caches URLs in the database.
-        """
-        urls = '|'.join(sorted(base + p_id for base, pfix, bin, p_id in pastes))
-        try:
-            repasted_url = yield self._db.get_repaste(urls)
-        except database.TooSoonError:
-            defer.returnValue(None)
-            return
-        if repasted_url is not None:
-            defer.returnValue(repasted_url)
-            return
-
-        defs = [self._getRawPasteContent(paste) for paste in pastes]
-        pastes_datas = yield defer.gatherResults(defs)
-        if len(pastes_datas) == 1:
-            data = pastes_datas[0]
-            language = 'python'
-        else:
-            data = '\n'.join(
-                '### %s.py\n%s' % (paste_id, paste_data)
-                for (base, prefix, bin, paste_id), paste_data
-                in zip(pastes, pastes_datas)
-            )
-            language = 'multi'
-        repasted_url = yield self._paster.createPaste(language, data)
-        yield self._db.add_repaste(urls, repasted_url)
-        defer.returnValue(repasted_url)
-
-    def _getRawPasteContent(self, paste):
-        """
-        Retrieve the raw content from the given paste.
-
-        Returns a Deferred that fires with the paste's content bytes.
-        """
-        base, prefix, bin, paste_id = paste
-        url = _pastebin_raw[bin] % (prefix, paste_id)
-        return get_page(url).addCallback(lambda pg_fac: pg_fac[0])
-
-
-def _same(value):
-    return value
-
-
-def _dedupe(items, key=_same):
-    """
-    Deduplicate items, preserving order.
-    """
-    seen = set()
-    deduped = []
-    for item in items:
-        ident = key(item)
-        if ident not in seen:
-            seen.add(ident)
-            deduped.append(item)
-    return deduped
-
-
-# TODO: Rename this probably.
-class ModularBadPasteRepaster(object):
     def __init__(self, db, paster, badPastebins):
         self._db = db
         self._paster = paster
@@ -224,6 +138,24 @@ class ModularBadPasteRepaster(object):
         repasted_url = yield self._paster.createPaste(language, data)
         yield self._db.add_repaste(repasteIdent, repasted_url)
         defer.returnValue(repasted_url)
+
+
+def _same(value):
+    return value
+
+
+def _dedupe(items, key=_same):
+    """
+    Deduplicate items, preserving order.
+    """
+    seen = set()
+    deduped = []
+    for item in items:
+        ident = key(item)
+        if ident not in seen:
+            seen.add(ident)
+            deduped.append(item)
+    return deduped
 
 
 class IBadPastebin(zi.Interface):

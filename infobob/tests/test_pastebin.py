@@ -32,7 +32,7 @@ class ExtractBadPasteSpecsTestCase(unittest.TestCase):
                 None,
             ),
         ]
-        self.repaster = pastebin.ModularBadPasteRepaster(
+        self.repaster = pastebin.BadPasteRepaster(
             None, None, badPastebins
         )
 
