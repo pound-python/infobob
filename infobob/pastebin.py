@@ -311,6 +311,9 @@ class FailedToRetrieve(Exception):
 
 
 def retrieveUrlContent(url):
+    if isinstance(url, unicode):
+        url = url.encode('utf-8')
+    log.info(u'Attempting to retrieve {url!r}'.format(url=url))
     respDfd = treq.get(url)
 
     def cbCheckResponseCode(response):
