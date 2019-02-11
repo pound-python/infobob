@@ -1,5 +1,6 @@
 import re
 import operator
+import urlparse
 
 from twisted.internet import reactor
 from twisted.internet import defer
@@ -395,85 +396,3 @@ class CouldNotPastebinError(Exception):
 class IPastebin(zi.Interface):
     """
     """
-
-
-
-# TODO: All of the stuff below here can be removed once the refactor
-#       is complete, but throw in a get_page compatibility thing probably.
-
-class NoRedirectHTTPPageGetter(client.HTTPPageGetter):
-    handleStatus_301 = handleStatus_302 = handleStatus_302 = lambda self: None
-
-class MarginallyImprovedHTTPClientFactory(client.HTTPClientFactory):
-    protocol = NoRedirectHTTPPageGetter
-
-    def page(self, page):
-        if self.waiting:
-            self.waiting = 0
-            self.deferred.callback((page, self))
-
-
-def _cbLogPageDetails(page_and_factory, url):
-    page, fac = page_and_factory
-    log.info(
-        u'from {url!r} got {status} {message}, {length} bytes',
-        url=url,
-        status=fac.status,
-        message=fac.message,
-        length=len(page),
-    )
-    return page_and_factory
-
-
-def _ebLogFailure(f, message, **formatparams):
-    log.failure(message, f, **formatparams)
-    return f
-
-
-def get_page(url, *a, **kw):
-    scheme, host, port, path = _parse(url)
-    factory = MarginallyImprovedHTTPClientFactory(url, *a, **kw)
-    reactor.connectTCP(host, port, factory)
-    dfd = factory.deferred
-    dfd.addCallback(_cbLogPageDetails, url)
-    dfd.addErrback(_ebLogFailure, u'Failed fetching {url!r}', url=url)
-    return dfd
-
-# TODO: Remove this hack once migrated to treq.
-import urlparse
-from twisted.web.http import urlparse as txurlparse
-# Borrowed from Twisted 13.0.0
-def _parse(url, defaultPort=None):
-    """
-    Split the given URL into the scheme, host, port, and path.
-    @type url: C{str}
-    @param url: An URL to parse.
-    @type defaultPort: C{int} or C{None}
-    @param defaultPort: An alternate value to use as the port if the URL does
-    not include one.
-    @return: A four-tuple of the scheme, host, port, and path of the URL.  All
-    of these are C{str} instances except for port, which is an C{int}.
-    """
-    url = url.strip()
-    parsed = txurlparse(url)
-    scheme = parsed[0]
-    path = urlparse.urlunparse(('', '') + parsed[2:])
-
-    if defaultPort is None:
-        if scheme == 'https':
-            defaultPort = 443
-        else:
-            defaultPort = 80
-
-    host, port = parsed[1], defaultPort
-    if ':' in host:
-        host, port = host.split(':')
-        try:
-            port = int(port)
-        except ValueError:
-            port = defaultPort
-
-    if path == '':
-        path = '/'
-
-    return scheme, host, port, path

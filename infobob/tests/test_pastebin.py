@@ -9,32 +9,7 @@ from infobob import pastebin
 @ddt.ddt
 class ExtractBadPasteSpecsTestCase(unittest.TestCase):
     def setUp(self):
-        badPastebins = [
-            pastebin.GenericBadPastebin(
-                u'pastebin.com',
-                [u'www.pastebin.com'],
-                u'([a-z0-9]{4,12})',
-                u'/raw/',
-                None,
-            ),
-            pastebin.GenericBadPastebin(
-                u'pastebin.ca',
-                [u'www.pastebin.ca'],
-                u'([0-9]{4,12})',
-                u'/raw/',
-                None,
-            ),
-            pastebin.GenericBadPastebin(
-                u'hastebin.com',
-                [u'www.hastebin.com'],
-                u'([a-z0-9]{4,12})',
-                u'/raw/',
-                None,
-            ),
-        ]
-        self.repaster = pastebin.BadPasteRepaster(
-            None, None, badPastebins
-        )
+        self.repaster = pastebin.make_repaster(None, None)
 
     def assertResults(self, message, expected):
         result = self.repaster.extractBadPasteSpecs(message)

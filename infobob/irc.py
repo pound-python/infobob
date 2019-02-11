@@ -571,67 +571,6 @@ class Infobob(irc.IRCClient):
         else:
             self.msg(target, '%s, %s' % (paste_target, paste_url))
 
-    @defer.inlineCallbacks
-    def _codepad(self, code, lang='Python', run=True):
-        redented = redent(code.decode('utf8', 'replace')).encode('utf8')
-        post_data = dict(
-            code=redented, lang='Python', submit='Submit', private='True')
-        if run:
-            post_data['run'] = 'True'
-        post_data = urlencode(post_data)
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        ign, fac = yield http.get_page('http://codepad.org/',
-            method='POST', postdata=post_data, headers=headers)
-        paste_url = urljoin('http://codepad.org/',
-            fac.response_headers['location'][0])
-        defer.returnValue(paste_url)
-
-    @defer.inlineCallbacks
-    def infobob_codepad(self, target, channel, paste_target, *text):
-        _ = channel.translate
-        try:
-            paste_url = yield self._codepad(' '.join(text))
-        except:
-            self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
-            raise
-        else:
-            self.msg(target, '%s, %s' % (paste_target, paste_url))
-
-    @defer.inlineCallbacks
-    def infobob_exec(self, target, channel, *text):
-        _ = channel.translate
-        text = _EXEC_PRELUDE + ' '.join(text)
-        try:
-            compile(text, '<%s>' % self.nickname, 'exec')
-        except BaseException as e:
-            error_msg = traceback.format_exception_only(type(e), e)[-1].strip()
-            self.msg(target, error_msg)
-            return
-        try:
-            paste_url = yield self._codepad(text)
-            page, ign = yield http.get_page(paste_url)
-        except:
-            self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
-            raise
-        else:
-            doc = lxml.html.fromstring(page.decode('utf8', 'replace'))
-            response = u''.join(doc.xpath("//a[@name='output']"
-                "/following-sibling::div/table/tr/td[2]/div/pre/text()"))
-            response = [line.rstrip()
-                for line in response.encode('utf-8').splitlines()
-                if line.strip()]
-            nlines = len(response)
-            if nlines > _MAX_LINES:
-                response[_MAX_LINES-1:] = [_(u'(... %(nlines)d lines, '
-                u'entire response in %(url)s ...)') %
-                    dict(nlines=nlines, url=paste_url)]
-            for part in response:
-                self.msg(target, part)
-
-    def infobob_print(self, target, channel, *text):
-        """Alias to print the result, aka eval"""
-        return self.infobob_exec(target, channel, 'print', *text)
-
     def infobob_stop(self, target, channel):
         _ = channel.translate
         self.msg(target, _(u'Okay!'))

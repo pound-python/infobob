@@ -11,9 +11,6 @@ import klein
 from infobob.database import NoSuchBan
 from infobob.util import parse_time_string
 
-# TODO: Remove this! Exporting get_page here only as temporary
-#       compat hack.
-from infobob.pastebin import get_page
 
 DEFAULT_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
