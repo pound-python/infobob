@@ -6,7 +6,7 @@ install_requires = [
     'lxml==3.6.0',
     'Pygments==1.4',
     'python-dateutil==2.5.3',
-    'Twisted[tls]==16.1.1',
+    'Twisted[tls]==16.4.0',
     'klein',
     'treq',
     'attrs',

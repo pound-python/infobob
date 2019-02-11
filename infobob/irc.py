@@ -16,7 +16,7 @@ import lxml.html
 
 from infobob.redent import redent
 from infobob import database, http, util
-from infobob.pastebin import Paster, make_repaster
+from infobob.pastebin import make_paster, make_repaster
 
 
 log = logger.Logger()
@@ -54,7 +54,7 @@ class Infobob(irc.IRCClient):
 
     def __init__(self, conf, paster=None, repaster=None):
         self._conf = conf
-        self._paster = paster or Paster(self._conf.dbpool)
+        self._paster = paster or make_paster(self._conf.dbpool)
         self._repaster = repaster or make_repaster(
             self._conf.dbpool, self._paster
         )
@@ -544,7 +544,9 @@ class Infobob(irc.IRCClient):
         self.msg(nick, _(_lol_message) % channel)
 
     def pastebin(self, language, data):
-        return self._paster.createPaste(language, data)
+        d = self._paster.createPaste(language, data)
+        d.addCallback(lambda binurl: binurl.encode('utf-8'))
+        return d
 
     def _pastebinPing(self):
         return self._paster.recordPastebinAvailabilities()
@@ -564,7 +566,7 @@ class Infobob(irc.IRCClient):
         redented = (
             redent(' '.join(text).decode('utf8', 'replace')).encode('utf8'))
         try:
-            paste_url = yield self.pastebin('python', redented)
+            paste_url = yield self.pastebin(redented, u'python')
         except:
             self.msg(target, _(u'Error: %r') % sys.exc_info()[1])
             raise

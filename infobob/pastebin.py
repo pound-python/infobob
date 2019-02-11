@@ -129,14 +129,14 @@ class BadPasteRepaster(object):
         # TODO: Update this once outgoing pasting is refactored.
         if len(pastes_datas) == 1:
             data = pastes_datas[0]
-            language = 'python'
+            language = u'python'
         else:
             data = b'\n'.join(
                 '### %s.py\n%s' % (paste.identity.encode('utf-8'), content)
                 for paste, content in zip(badPastes, pastes_datas)
             )
-            language = 'multi'
-        repasted_url = yield self._paster.createPaste(language, data)
+            language = u'multi'
+        repasted_url = yield self._paster.createPaste(data, language)
         yield self._db.add_repaste(repasteIdent, repasted_url)
         defer.returnValue(repasted_url)
 
@@ -328,56 +328,88 @@ def retrieveUrlContent(url):
 
 ### Support for outgoing pastes
 
+def make_paster(db):
+    pastebins = [
+        SpacepastePastebin(u'habpaste', u'https://paste.pound-python.org')
+    ]
+    return Paster(db, pastebins)
+
 
 class Paster(object):
-    def __init__(self, db):
+    def __init__(self, db, pastebins):
         self._db = db
+        self._pastebins = {}
+        for pb in pastebins:
+            if pb.name in pastebins:
+                raise ValueError(
+                    'Duplicate pastebin name {pb.name}'.format(pb=pb)
+                )
+            self._pastebins[pb.name] = pb
 
     @defer.inlineCallbacks
-    def createPaste(self, language, data):
-        # FIXME: Is the language really necessary? Is it a
-        #       spacepaste-specific thing?
-        # TODO: Reimplement this to allow for non-spacepaste bins.
-        available_pastebins = yield self._db.get_pastebins()
-        for name, url in available_pastebins:
-            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
-            try:
-                new_paste_id = yield proxy.callRemote(
-                    'pastes.newPaste', language, data)
-            except:
-                log.failure(
-                    u'Problem pasting to {pastebin} via {url!r}',
-                    pastebin=name,
-                    url=url,
+    def createPaste(self, data, language):
+        # TODO: Log attempts, successes, failures.
+        database_pastebins = yield self._db.get_pastebins()
+        if not database_pastebins:
+            log.error(u'No pastebins available')
+            raise CouldNotPastebinError()
+
+        for name, _ in database_pastebins:
+            pb = self._pastebins.get(name)
+            if pb is None:
+                log.warn(
+                    u'Pastebin in database with name {name!r} has no '
+                    u'instance registered, skipping',
+                    name=name,
                 )
+                continue
+            try:
+                url = yield pb.createPaste(data, language)
+            except Exception:
+                log.failure(u'Problem pasting to {pastebin}', pastebin=name)
                 yield self._db.set_latency(name, None)
                 yield self._db.record_is_up(name, False)
                 continue
             else:
                 yield self._db.record_is_up(name, True)
-                defer.returnValue('%s/show/%s/' % (url, new_paste_id))
+                defer.returnValue(url)
+
+        log.error(u'Unable to pastebin')
         raise CouldNotPastebinError()
 
     @defer.inlineCallbacks
     def recordPastebinAvailabilities(self):
-        # TODO: Log attempts, successes, failures.
-        # TODO: Refactor to support non-spacepaste bins.
-        def _eb(_):
+        # TODO: This is pretty hard to understand, refactor it.
+
+        def ebSuppress(_):
             return None, None
-        def _cb((latency, _), name):
+
+        def cbRecordUpAndLatency(result, name):
+            latency, _ = result
             return defer.DeferredList([
                 self._db.record_is_up(name, bool(latency)),
                 self._db.set_latency(name, latency),
             ])
-        def do_ping((name, url)):
-            proxy = xmlrpc.Proxy(url + '/xmlrpc/')
-            d = proxy.callRemote('pastes.getLanguages')
+
+        def doPing(pb_name_etc):
+            name, _ = pb_name_etc
+            pb = self._pastebins.get(name)
+            if pb is None:
+                log.warn(
+                    u'Pastebin in database with name {name!r} has no '
+                    u'instance registered',
+                    name=name,
+                )
+                return None, None
+            log.info(u'Checking if pastebin {name!r} is up', name=name)
+            d = pb.checkIfAvailable()
             util.time_deferred(d)
-            d.addErrback(_eb)
-            d.addCallback(_cb, name)
+            d.addErrback(ebSuppress)
+            d.addCallback(cbRecordUpAndLatency, name)
             return d
+
         pastebins = yield self._db.get_all_pastebins()
-        yield util.parallel(pastebins, 10, do_ping)
+        yield util.parallel(pastebins, 10, doPing)
 
 
 class CouldNotPastebinError(Exception):
@@ -395,4 +427,51 @@ class CouldNotPastebinError(Exception):
 #       Probably not yet.
 class IPastebin(zi.Interface):
     """
+    A pastebin site to which we can upload content.
     """
+    name = zi.Attribute("""
+        The name of this pastebin as a text string.
+
+        This is used as the primary key in the database.
+    """)
+
+    def checkIfAvailable():
+        """
+        Check if the pastebin is available by making an idempotent
+        HTTP request to it and verifying it responds properly.
+
+        Return a Deferred that fires with True if it's up, False
+        otherwise.
+        """
+
+    def createPaste(content, language):
+        """
+        Create a paste with the given ``content`` bytes, and using
+        ``language`` (a text string) for syntax highlighting.
+
+        Return a Deferred that fires with a text string URL where
+        the paste's content can be viewed.
+        """
+
+
+@zi.implementer(IPastebin)
+class SpacepastePastebin(object):
+    def __init__(self, name, serviceUrl):
+        self.name = name
+        self._serviceUrl = serviceUrl
+        self._proxy = xmlrpc.Proxy(serviceUrl.encode('ascii') + b'/xmlrpc/')
+
+    def checkIfAvailable(self):
+        d = self._proxy.callRemote(b'pastes.getLanguages')
+        # TODO: Log failure before returning false.
+        d.addCallbacks(lambda _: True, lambda f: False)
+        return d
+
+    @defer.inlineCallbacks
+    def createPaste(self, content, language):
+        pasteId = yield self._proxy.callRemote(
+            b'pastes.newPaste', language.encode('ascii'), content)
+        defer.returnValue(u'{0}/show/{1}/'.format(
+            self._serviceUrl,
+            pasteId.decode('ascii'),
+        ))
