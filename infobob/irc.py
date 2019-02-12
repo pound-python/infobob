@@ -558,7 +558,7 @@ class Infobob(irc.IRCClient):
             return
 
         self.msg(target, _(u'%(url)s (repasted for %(user)s)') %
-            dict(url=repasted_url, user=user))
+            dict(url=repasted_url.encode('utf-8'), user=user))
 
     @defer.inlineCallbacks
     def infobob_redent(self, target, channel, paste_target, *text):

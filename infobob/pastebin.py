@@ -106,8 +106,8 @@ class BadPasteRepaster(object):
         """
         Collect the contents of the provided pastes, post them onto
         a different pastebin (all together), and fire the returned
-        Deferred with the URL for the new paste, or None if the same
-        repasting was requested again too soon.
+        Deferred with the URL for the new paste (a text string), or
+        None if the same repasting was requested again too soon.
 
         Caches URLs in the database.
         """
