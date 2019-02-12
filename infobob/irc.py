@@ -55,9 +55,7 @@ class Infobob(irc.IRCClient):
     def __init__(self, conf, paster=None, repaster=None):
         self._conf = conf
         self._paster = paster or make_paster(self._conf.dbpool)
-        self._repaster = repaster or make_repaster(
-            self._conf.dbpool, self._paster
-        )
+        self._repaster = repaster or make_repaster(self._paster)
         self.nickname = conf['irc.nickname'].encode()
         if conf['irc.password']:
             self.password = conf['irc.password'].encode()

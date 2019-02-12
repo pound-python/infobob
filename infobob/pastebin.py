@@ -1,6 +1,7 @@
 import re
 import operator
 import urlparse
+import time
 
 from twisted.internet import reactor
 from twisted.internet import defer
@@ -16,7 +17,7 @@ from infobob import util
 log = logger.Logger()
 
 
-def make_repaster(db, paster):
+def make_repaster(paster):
     badPastebins = [
         GenericBadPastebin(
             u'pastebin.com',
@@ -40,15 +41,25 @@ def make_repaster(db, paster):
             retrieveUrlContent,
         ),
     ]
-    return BadPasteRepaster(db, paster, badPastebins)
+    return BadPasteRepaster(badPastebins, paster)
 
 
 class BadPasteRepaster(object):
-    def __init__(self, db, paster, badPastebins):
-        self._db = db
+    """
+    Manage the rehosting of content from pastebin sites we don't like.
+
+    Arguments:
+        badPastebins (iterable of IBadPastebin providers):
+            The pastebins we don't like
+        paster (Paster):
+            Used to rehost the content
+    """
+    def __init__(self, badPastebins, paster):
         self._paster = paster
         self._nameToPastebin = {}
         self._domainToPastebin = {}
+
+        self._cache = _RepasteCache(maxSize=10, minDelay=10)
 
         for pb in badPastebins:
             if pb.name in self._nameToPastebin:
@@ -109,24 +120,27 @@ class BadPasteRepaster(object):
         Deferred with the URL for the new paste (a text string), or
         None if the same repasting was requested again too soon.
 
-        Caches URLs in the database.
+        Caches recently repasted URLs in memory.
         """
         repasteIdent = '|'.join(sorted(paste.identity for paste in badPastes))
         try:
-            repasted_url = yield self._db.get_repaste(repasteIdent)
-        except database.TooSoonError:
+            repasted_url = self._cache[repasteIdent]
+        except _TooSoon:
             defer.returnValue(None)
             return
-        if repasted_url is not None:
+        except KeyError:
+            pass
+        else:
             defer.returnValue(repasted_url)
             return
 
+        # Cache missed, continue.
         defs = [
             self._nameToPastebin[paste.pastebinName].contentFromPaste(paste)
             for paste in badPastes
         ]
         pastes_datas = yield defer.gatherResults(defs)
-        # TODO: Update this once outgoing pasting is refactored.
+        # TODO: Update this once outgoing pasting supports multi-file pastes.
         if len(pastes_datas) == 1:
             data = pastes_datas[0]
             language = u'python'
@@ -137,8 +151,49 @@ class BadPasteRepaster(object):
             )
             language = u'multi'
         repasted_url = yield self._paster.createPaste(data, language)
-        yield self._db.add_repaste(repasteIdent, repasted_url)
+        self._cache[repasteIdent] = repasted_url
         defer.returnValue(repasted_url)
+
+
+# TODO: Document and test this
+class _RepasteCache(object):
+    def __init__(self, maxSize, minDelay):
+        self._maxSize = maxSize
+        self._minDelay = minDelay
+        self._store = {}
+
+    def __setitem__(self, pasteIdent, repasteUrl):
+        self._store[pasteIdent] = (self._now(), repasteUrl)
+        self._truncateToMax()
+
+    def __getitem__(self, pasteIdent):
+        storedAt, repasteUrl = self._store[pasteIdent]
+        now = self._now()
+        if now - storedAt < self._minDelay:
+            raise _TooSoon()
+
+        self._store[pasteIdent] = (now, repasteUrl)
+        return repasteUrl
+
+    def __len__(self):
+        return len(self._store)
+
+    def _now(self):
+        return time.time()
+
+    def _truncateToMax(self):
+        oversub = len(self) - self._maxSize
+        if oversub > 0:
+            oldToNew = sorted(
+                self._store,
+                key=lambda k: self._store[k][0]
+            )
+            for key in oldToNew[:oversub]:
+                self._store.pop(key)
+
+
+class _TooSoon(Exception):
+    pass
 
 
 def _same(value):
@@ -225,7 +280,8 @@ class IBadPaste(zi.Interface):
     identity = zi.Attribute("""
         The text string that identifies the paste and the originating
         pastebin uniquely across all `IBadPastebin` providers in use.
-        This is used in the database.
+
+        This is used as a component of (or an entire) cache key.
     """)
 
 

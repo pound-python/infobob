@@ -1,15 +1,20 @@
 import unittest
 
+from twisted.internet import defer
 from twisted.trial.unittest import TestCase as TrialTestCase
 import ddt
 
 from infobob import pastebin
+import infobob.tests.support as sp
 
 
 @ddt.ddt
 class ExtractBadPasteSpecsTestCase(unittest.TestCase):
+    """
+    Integration tests for bad pastebin URL detection.
+    """
     def setUp(self):
-        self.repaster = pastebin.make_repaster(None, None)
+        self.repaster = pastebin.make_repaster(None)
 
     def assertResults(self, message, expected):
         result = self.repaster.extractBadPasteSpecs(message)
@@ -74,3 +79,56 @@ class ExtractBadPasteSpecsTestCase(unittest.TestCase):
 
     # TODO: Add some tricky messages, like those involving URLs with
     #       trailing punctuation.
+
+
+class RepasteTestCase(TrialTestCase):
+    def setUp(self):
+        fakeBadPastebin = sp.FakeObj()
+        fakeBadPastebin.name = u'testbadpb'
+        fakeBadPastebin.domains = [u'paste.example.com']
+        fakeBadPastebin.contentFromPaste = sp.DeferredSequentialReturner([])
+
+        fakePaster = sp.FakeObj()
+        fakePaster.createPaste = sp.DeferredSequentialReturner([])
+
+        self.repaster = pastebin.BadPasteRepaster([fakeBadPastebin], fakePaster)
+        self.fakeContentFromPaste = fakeBadPastebin.contentFromPaste
+        self.fakeCreatePaste = fakePaster.createPaste
+
+    @defer.inlineCallbacks
+    def test_basic_cacheing(self):
+        badPaste = pastebin.BadPaste(u'testbadpb', u'allgood')
+        expectedRepastedUrl = u'https://paste.example.com/allgood'
+        self.fakeContentFromPaste.reset([b'testing testing'])
+        self.fakeCreatePaste.reset([expectedRepastedUrl])
+        self.repaster._cache._now = lambda: 1
+
+        repastedUrl = yield self.repaster.repaste([badPaste])
+
+        self.assertEqual(
+            self.fakeContentFromPaste.calls,
+            [sp.Call(badPaste)],
+        )
+        self.assertEqual(
+            self.fakeCreatePaste.calls,
+            [sp.Call(b'testing testing', u'python')],
+        )
+        self.assertEqual(repastedUrl, expectedRepastedUrl)
+
+        # Now make sure these aren't called, only the cache is involved.
+        self.fakeContentFromPaste.reset([])
+        self.fakeCreatePaste.reset([])
+
+        self.repaster._cache._now = lambda: 2
+        repastedUrl = yield self.repaster.repaste([badPaste])
+        self.assertEqual(self.fakeContentFromPaste.calls, [])
+        self.assertEqual(self.fakeCreatePaste.calls, [])
+        # Too soon, so should be None.
+        self.assertIsNone(repastedUrl)
+
+        self.repaster._cache._now = lambda: 20
+        repastedUrl = yield self.repaster.repaste([badPaste])
+        self.assertEqual(self.fakeContentFromPaste.calls, [])
+        self.assertEqual(self.fakeCreatePaste.calls, [])
+        # After enough of a delay, the url comes through.
+        self.assertEqual(repastedUrl, expectedRepastedUrl)
