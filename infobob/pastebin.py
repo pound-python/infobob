@@ -11,7 +11,6 @@ import treq
 import zope.interface as zi
 import attr
 
-from infobob import database
 from infobob import util
 
 log = logger.Logger()
@@ -387,102 +386,90 @@ def retrieveUrlContent(url):
 
 ### Support for outgoing pastes
 
-def make_paster(db):
+def make_paster():
     pastebins = [
-        SpacepastePastebin(u'habpaste', u'https://paste.pound-python.org')
+        SpacepastePastebin(u'habpaste', u'https://paste.pound-python.org'),
     ]
-    return Paster(db, pastebins)
+    return Paster(pastebins)
+
+
+_INF = float('infinity')
 
 
 class Paster(object):
-    def __init__(self, db, pastebins):
-        self._db = db
-        self._pastebins = {}
+    def __init__(self, pastebins):
+        self._pastebins = pastebins
+        self._pastebinLatencies = {}
         for pb in pastebins:
-            if pb.name in pastebins:
+            if pb.name in self._pastebinLatencies:
                 raise ValueError(
                     'Duplicate pastebin name {pb.name}'.format(pb=pb)
                 )
-            self._pastebins[pb.name] = pb
+            self._pastebinLatencies[pb.name] = _INF
 
     @defer.inlineCallbacks
     def createPaste(self, data, language):
         # TODO: Log attempts, successes, failures.
-        database_pastebins = yield self._db.get_pastebins()
-        if not database_pastebins:
-            log.error(u'No pastebins available')
-            raise CouldNotPastebinError()
-
-        for name, _ in database_pastebins:
-            pb = self._pastebins.get(name)
-            if pb is None:
-                log.warn(
-                    u'Pastebin in database with name {name!r} has no '
-                    u'instance registered, skipping',
-                    name=name,
-                )
-                continue
+        bestFirst = sorted(
+            self._pastebins,
+            key=lambda pb: self._pastebinLatencies
+        )
+        for pb in bestFirst:
             try:
+                start = time.time()
                 url = yield pb.createPaste(data, language)
+                latency = time.time() - start
             except Exception:
                 log.failure(u'Problem pasting to {pastebin}', pastebin=name)
-                yield self._db.set_latency(name, None)
-                yield self._db.record_is_up(name, False)
+                self._pastebinLatencies[pb.name] = _INF
                 continue
             else:
-                yield self._db.record_is_up(name, True)
+                self._pastebinLatencies[pb.name] = latency
                 defer.returnValue(url)
 
-        log.error(u'Unable to pastebin')
+        log.error(
+            u'Unable to paste, tried {npastebins} sites',
+            npastebins=len(bestFirst),
+        )
         raise CouldNotPastebinError()
 
     @defer.inlineCallbacks
     def recordPastebinAvailabilities(self):
         # TODO: This is pretty hard to understand, refactor it.
 
-        def ebSuppress(_):
-            return None, None
+        def ebReportInfLatency(fail, pb_name):
+            log.failure(
+                u'Error checking latency of pastebin {pb_name!}',
+                pb_name=pb_name,
+                failure=fail,
+            )
+            return _INF, None
 
-        def cbRecordUpAndLatency(result, name):
+        def cbRecordLatency(result, pb_name):
             latency, _ = result
-            return defer.DeferredList([
-                self._db.record_is_up(name, bool(latency)),
-                self._db.set_latency(name, latency),
-            ])
+            self._pastebinLatencies[pb_name] = latency
+            log.info(
+                u'Recorded latency for pastebin {pb_name!r} as {latency} seconds',
+                pb_name=pb_name,
+                latency=latency,
+            )
 
-        def doPing(pb_name_etc):
-            name, _ = pb_name_etc
-            pb = self._pastebins.get(name)
-            if pb is None:
-                log.warn(
-                    u'Pastebin in database with name {name!r} has no '
-                    u'instance registered',
-                    name=name,
-                )
-                return None, None
-            log.info(u'Checking if pastebin {name!r} is up', name=name)
+        def doPing(pb):
+            log.info(u'Checking if pastebin {pb_name!r} is up', pb_name=pb.name)
             d = pb.checkIfAvailable()
             util.time_deferred(d)
-            d.addErrback(ebSuppress)
-            d.addCallback(cbRecordUpAndLatency, name)
+            d.addErrback(ebReportInfLatency, pb.name)
+            d.addCallback(cbRecordLatency, pb.name)
             return d
 
-        pastebins = yield self._db.get_all_pastebins()
-        yield util.parallel(pastebins, 10, doPing)
+        yield util.parallel(self._pastebins, 10, doPing)
 
 
 class CouldNotPastebinError(Exception):
     pass
 
 
-# TODO: Define this. It needs methods for posting content and to check if
-#       the pastebin is up, and a name that matches with the database's
-#       pastebins.name column. That table will now just support the
-#       latency stuff, not define which pastebins should be used.
-#       Paster should check (on startup?) that all the registered
-#       pastebins have an entry in the database.
-#
-#       Consider if we want to support multi-file pastebins differently.
+# TODO: Consider if we want to support multi-file pastebins differently.
 #       Probably not yet.
 class IPastebin(zi.Interface):
     """
@@ -491,7 +478,7 @@ class IPastebin(zi.Interface):
     name = zi.Attribute("""
         The name of this pastebin as a text string.
 
-        This is used as the primary key in the database.
+        This must be unique across all configured pastebins.
     """)
 
     def checkIfAvailable():
