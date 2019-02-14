@@ -547,7 +547,7 @@ class Infobob(irc.IRCClient):
         return d
 
     def _pastebinPing(self):
-        return self._paster.recordPastebinAvailabilities()
+        return self._paster.checkAvailabilities()
 
     @defer.inlineCallbacks
     def repaste(self, target, user, pastes, _):

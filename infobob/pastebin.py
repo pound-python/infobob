@@ -1,3 +1,8 @@
+"""
+Pastebin site support.
+
+Read from bad pastebins, and post to good pastebins.
+"""
 import re
 import operator
 import urlparse
@@ -114,10 +119,13 @@ class BadPasteRepaster(object):
     @defer.inlineCallbacks
     def repaste(self, badPastes):
         """
-        Collect the contents of the provided pastes, post them onto
-        a different pastebin (all together), and fire the returned
-        Deferred with the URL for the new paste (a text string), or
-        None if the same repasting was requested again too soon.
+        Collect the contents of the supplied pastes (an iterable of
+        IBadPaste providers) and post them onto a different pastebin
+        (all together).
+
+        Return a Deferred that fires with the URL for the new paste
+        (a text string), or None if the same repasting was requested
+        again too soon.
 
         Caches recently repasted URLs in memory.
         """
@@ -154,8 +162,21 @@ class BadPasteRepaster(object):
         defer.returnValue(repasted_url)
 
 
-# TODO: Document and test this
+# TODO: Test this
 class _RepasteCache(object):
+    """
+    Simple LRU cache for repaste URLs, which enforces a minimum
+    access delay.
+
+    Setting an item will record or update the key's last-access time,
+    and trim the cache if there are more than ``maxSize`` items.
+
+    Getting an item will check if the minimum delay has elapsed.
+    If it has, the last-access time will be updated to the current
+    time, and the item returned. If not, :exc:`._TooSoon` will be
+    raised. If the item's key does not exist, :exc:`KeyError` will
+    be raised.
+    """
     def __init__(self, maxSize, minDelay):
         self._maxSize = maxSize
         self._minDelay = minDelay
@@ -201,7 +222,8 @@ def _same(value):
 
 def _dedupe(items, key=_same):
     """
-    Deduplicate items, preserving order.
+    Deduplicate items, preserving order. If a key function is provided,
+    it will be used for the duplicate test.
     """
     seen = set()
     deduped = []
@@ -366,6 +388,13 @@ class FailedToRetrieve(Exception):
 
 
 def retrieveUrlContent(url):
+    """
+    Make a GET request to ``url``, verify 200 status response, and
+    return a Deferred that fires with the content as a byte string.
+
+    Will errback with :exc:`FailedToRetrieve` if a non-200 response
+    was received.
+    """
     if isinstance(url, unicode):
         url = url.encode('utf-8')
     log.info(u'Attempting to retrieve {url!r}'.format(url=url))
@@ -397,6 +426,12 @@ _INF = float('infinity')
 
 
 class Paster(object):
+    """
+    Allow for posting content to quickest-responding pastebin service
+    by brokering `IPastebin` providers.
+
+    Clients need to periodically call :meth:`checkAvailabilities`.
+    """
     def __init__(self, pastebins):
         self._pastebins = pastebins
         self._pastebinLatencies = {}
@@ -409,6 +444,13 @@ class Paster(object):
 
     @defer.inlineCallbacks
     def createPaste(self, data, language):
+        """
+        Upload `data` (bytes) to a pastebin, preferring the one with
+        the lowest recorded latency.
+
+        Return a Deferred that fires with the new paste's URL (text)
+        or errbacks with :exc:`.CouldNotPastebinError`.
+        """
         # TODO: Log attempts, successes, failures.
         bestFirst = sorted(
             self._pastebins,
@@ -434,7 +476,10 @@ class Paster(object):
         raise CouldNotPastebinError()
 
     @defer.inlineCallbacks
-    def recordPastebinAvailabilities(self):
+    def checkAvailabilities(self):
+        """
+        Make requests to all pastebins and record their latencies.
+        """
         # TODO: This is pretty hard to understand, refactor it.
 
         def ebReportInfLatency(fail, pb_name):
