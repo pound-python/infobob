@@ -76,67 +76,6 @@ class InfobobDatabaseRunner(object):
         return txn.fetchall()[0][0]
 
     @interaction
-    def get_repaste(self, txn, orig_url):
-        txn.execute("""
-            SELECT repasted_url, time_of
-            FROM   repastes
-            WHERE  orig_url = ?
-        """, (orig_url,))
-        row = txn.fetchall()
-        if row:
-            url, time_of = row[0]
-            if time_of:
-                delta = time.time() - time_of
-            else:
-                delta = 15
-            if delta > 60*60*24*7:
-                return None
-            elif delta < 10:
-                raise TooSoonError()
-            return url
-        return None
-
-    @interaction
-    def add_repaste(self, txn, orig_url, repasted_url):
-        txn.execute("""
-            REPLACE INTO repastes
-            VALUES     (?, ?, ?)
-        """, (orig_url, repasted_url, time.time()))
-
-    @interaction
-    def get_pastebins(self, txn):
-        txn.execute("""
-            SELECT   name, service_url
-            FROM     pastebin_ranks
-            ORDER BY rank ASC
-        """)
-        return txn.fetchall()
-
-    @interaction
-    def get_all_pastebins(self, txn):
-        txn.execute("""
-            SELECT name, service_url
-            FROM   pastebins
-        """)
-        return txn.fetchall()
-
-    @interaction
-    def set_latency(self, txn, name, latency):
-        txn.execute("""
-            UPDATE pastebins
-            SET    latency = ?
-            WHERE  name = ?
-        """, (latency, name))
-        return bool(txn.rowcount)
-
-    @interaction
-    def record_is_up(self, txn, name, is_up):
-        txn.execute("""
-            INSERT INTO pastebin_reliability
-            VALUES     (?, ?, ?)
-        """, (name, time.time(), is_up))
-
-    @interaction
     def set_users_in_channel(self, txn, nicks, channel):
         txn.execute("""
             DELETE FROM channel_users
