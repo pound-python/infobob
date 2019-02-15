@@ -86,7 +86,7 @@ class BadPasteRepaster(object):
         bad paste found.
         """
         potentialUrls = re.findall(
-            b'(?:https?://)?[a-z0-9.-]+/[a-z0-9/]+',
+            b'(?:https?://)?[a-z0-9.-:]+/[a-z0-9/]+',
             message,
             flags=re.IGNORECASE,
         )
@@ -98,8 +98,7 @@ class BadPasteRepaster(object):
             if not hasScheme:
                 url = b'http://' + url
             parsed = urlparse.urlparse(url.decode('utf-8'))
-            # TODO: Get domain from parsed's netloc, without un/pw or port.
-            domain = parsed.netloc.lower()
+            domain = parsed.hostname
             pb = self._domainToPastebin.get(domain)
             if pb is None:
                 continue
@@ -109,7 +108,7 @@ class BadPasteRepaster(object):
                 log.warn(
                     u'Could not identify paste from URL {url!r}: {error!r}',
                     url=url,
-                    err=str(e),
+                    error=str(e),
                 )
                 continue
             pastes.append(paste)
@@ -147,7 +146,6 @@ class BadPasteRepaster(object):
             for paste in badPastes
         ]
         pastes_datas = yield defer.gatherResults(defs)
-        # TODO: Update this once outgoing pasting supports multi-file pastes.
         if len(pastes_datas) == 1:
             data = pastes_datas[0]
             language = u'python'
@@ -321,6 +319,9 @@ class BadPaste(object):
         self.identity = u'{0}::{1}'.format(self.pastebinName, self.id)
 
 
+# TODO: Make this more generic by accepting a function instead of just
+#       a regex pattern, and call that function with the full URL path
+#       instead of just the first component.
 @zi.implementer(IBadPastebin)
 class GenericBadPastebin(object):
     """
@@ -442,6 +443,8 @@ class Paster(object):
                 )
             self._pastebinLatencies[pb.name] = _INF
 
+    # TODO: Clarify what the `language` arg's semantics are (figure them
+    #       out first, naturally).
     @defer.inlineCallbacks
     def createPaste(self, data, language):
         """
@@ -451,22 +454,24 @@ class Paster(object):
         Return a Deferred that fires with the new paste's URL (text)
         or errbacks with :exc:`.CouldNotPastebinError`.
         """
-        # TODO: Log attempts, successes, failures.
+        log.info(u'Attempting to pastebin {len} bytes', len=len(data))
         bestFirst = sorted(
             self._pastebins,
             key=lambda pb: self._pastebinLatencies
         )
         for pb in bestFirst:
+            log.info(u'Trying pastebin {pb_name!r}', pb_name=pb_name)
             try:
                 start = time.time()
                 url = yield pb.createPaste(data, language)
                 latency = time.time() - start
             except Exception:
-                log.failure(u'Problem pasting to {pastebin}', pastebin=name)
+                log.failure(u'Error pasting to {pastebin}', pastebin=name)
                 self._pastebinLatencies[pb.name] = _INF
                 continue
             else:
                 self._pastebinLatencies[pb.name] = latency
+                log.info(u'Pasted to {pb_name!r}', pb_name=pb_name)
                 defer.returnValue(url)
 
         log.error(
@@ -480,7 +485,6 @@ class Paster(object):
         """
         Make requests to all pastebins and record their latencies.
         """
-        # TODO: This is pretty hard to understand, refactor it.
 
         def ebReportInfLatency(fail, pb_name):
             log.failure(
@@ -514,8 +518,6 @@ class CouldNotPastebinError(Exception):
     pass
 
 
-# TODO: Consider if we want to support multi-file pastebins differently.
-#       Probably not yet.
 class IPastebin(zi.Interface):
     """
     A pastebin site to which we can upload content.
@@ -554,8 +556,15 @@ class SpacepastePastebin(object):
 
     def checkIfAvailable(self):
         d = self._proxy.callRemote(b'pastes.getLanguages')
-        # TODO: Log failure before returning false.
-        d.addCallbacks(lambda _: True, lambda f: False)
+
+        def ebLogAndReportUnavailable(f):
+            log.failure(
+                u'Unable to communicate with {pb_name!r} pastebin',
+                pb_name=self.name,
+            )
+            return False
+
+        d.addCallbacks(lambda _: True, ebLogAndReportUnavailable)
         return d
 
     @defer.inlineCallbacks
