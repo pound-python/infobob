@@ -1,4 +1,6 @@
 import unittest
+import urllib
+import re
 
 from twisted.internet import defer
 from twisted.trial.unittest import TestCase as TrialTestCase
@@ -208,9 +210,113 @@ class RepasteTestCase(TrialTestCase):
             resUrl = yield self.repaster.repaste([bp])
             self.assertEqual(resUrl, expUrl)
 
-        resUrl = yield self.repaster.repaste([badPastes[10]])
-        self.assertEqual(resUrl, badPasteRepastedUrls[10])
-
         self.assertEqual(len(self.repaster._cache), 10)  # still 10
 
-        self.fail('not done yet, verify "first" one got kicked out.')
+        # First badPaste still in the cache
+        self.assertIn(badPastes[0].identity, self.repaster._cache)
+        # Make a new one get added to the cache...
+        resUrl = yield self.repaster.repaste([badPastes[-1]])
+        self.assertEqual(resUrl, badPasteRepastedUrls[-1])
+        self.assertEqual(len(self.repaster._cache), 10)  # still 10
+        # ...and verify the first badPaste was dropped from the cache
+        self.assertNotIn(badPastes[0].identity, self.repaster._cache)
+
+
+def contentFromPathComponent(url):
+    _, _, badPasteId = url.rpartition(u'/')
+    content = b'content for ' + badPasteId.encode('ascii')
+    return defer.succeed(content)
+
+
+@ddt.ddt
+class GenericBadPastebinTestCase(TrialTestCase):
+    def setUp(self):
+        self.bp = pastebin.GenericBadPastebin(
+            u'paste.example.com',
+            [u'alt1.paste.example.com', 'alt2.paste.example.com'],
+            u'([0-9]{4,12})',
+            u'/raw/',
+            contentFromPathComponent,
+        )
+
+    @ddt.data(*[
+        pfx + u'paste.example.com'
+        for pfx in (u'', u'alt1.', u'alt2.')
+    ])
+    def test_identify_domains(self, domain):
+        result = self.bp.identifyPaste(domain, u'/1234', None, None, None)
+        expected = pastebin.BadPaste(u'paste.example.com', u'1234')
+        self.assertEqual(result, expected)
+
+    def test_identify_rejects_unknown_domain(self):
+        errPattern = r"Unknown domain u?'wrong.example.com' for "
+        with self.assertRaisesRegexp(ValueError, errPattern):
+            self.bp.identifyPaste(u'wrong.example.com', None, None, None, None)
+
+    # TODO: Implement this
+    @unittest.skip('To be implemented after refactor away from pasteIdPattern')
+    def test_identify_paths(self, path):
+        self.assertFalse(True)
+
+    @ddt.data(u'/', u'/alpha', u'/123')
+    def test_identify_rejects_nonmatching_path(self, path):
+        errPattern = r"Could not locate paste ID from path u?'{0}'".format(
+            re.escape(path)
+        )
+        with self.assertRaisesRegexp(ValueError, errPattern):
+            self.bp.identifyPaste(u'paste.example.com', path, None, None, None)
+
+    @defer.inlineCallbacks
+    def test_contentFromPaste(self):
+        badPaste = pastebin.BadPaste(u'paste.example.com', u'1234')
+        content = yield self.bp.contentFromPaste(badPaste)
+        self.assertEqual(content, b'content for 1234')
+
+    @defer.inlineCallbacks
+    def test_contentFromPaste_rejects_foreign_badPaste(self):
+        foreignBadPaste = pastebin.BadPaste(u'other.example.com', u'1234')
+        errPattern = (
+            r"Cannot retrieve paste .*u?'other.example.com'.*, "
+            "not created by .*u?'paste.example.com'"
+        )
+        with self.assertRaisesRegexp(ValueError, errPattern):
+            yield self.bp.contentFromPaste(foreignBadPaste)
+
+
+
+class RetrieveUrlContentTestCase(TrialTestCase):
+    @defer.inlineCallbacks
+    def setUp(self):
+        from twisted.internet import endpoints
+        from twisted.internet import reactor
+        from twisted.web.server import Site
+        import klein
+
+        self.app = klein.Klein()
+
+        @self.app.route('/<int:status>/<string:content>')
+        def customize_response(request, status, content):
+            request.setResponseCode(status)
+            return content
+
+        self.site = Site(self.app.resource())
+        self.endpoint = endpoints.TCP4ServerEndpoint(reactor, 7777)
+        self.baseUrl = 'http://localhost:7777'
+
+        self.listeningPort = yield self.endpoint.listen(self.site)
+        self.addCleanup(self.listeningPort.stopListening)
+
+    def doRetrieve(self, status, content):
+        url = self.baseUrl + '/{0}/{1}'.format(
+            status, urllib.quote(content)
+        )
+        return pastebin.retrieveUrlContent(url)
+
+    def test_success(self):
+        d = self.doRetrieve(200, b'foo bar')
+        d.addCallback(self.assertEqual, b'foo bar')
+        return d
+
+    def test_rejects_non_200_response(self):
+        raise NotImplementedError('not done yet')
+

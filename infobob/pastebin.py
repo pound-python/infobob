@@ -193,8 +193,14 @@ class _RepasteCache(object):
         self._store[pasteIdent] = (now, repasteUrl)
         return repasteUrl
 
+    def __contains__(self, pasteIdent):
+        return pasteIdent in self._store
+
     def __len__(self):
         return len(self._store)
+
+    def keys(self):
+        return self._store.keys()
 
     def _now(self):
         return time.time()
@@ -208,6 +214,15 @@ class _RepasteCache(object):
             )
             for key in oldToNew[:oversub]:
                 self._store.pop(key)
+
+    def __repr__(self):
+        return (
+            '<{cls.__name__}('
+            'maxSize={s._maxSize}, '
+            'minDelay={s._minDelay}, '
+            'keys={keys}'
+            ')'
+        ).format(cls=type(self), s=self, keys=sorted(self.keys()))
 
 
 class _TooSoon(Exception):
@@ -370,9 +385,10 @@ class GenericBadPastebin(object):
 
     def contentFromPaste(self, badPaste):
         if badPaste.pastebinName != self.name:
-            raise ValueError('Unknown paste {paste!r} for {self!r}'.format(
-                paste=badPaste, self=self
-            ))
+            msgfmt = (
+                u'Cannot retrieve paste {paste!r}, not created by {self!r}'
+            )
+            raise ValueError(msgfmt.format(paste=badPaste, self=self))
         url = self._baseRawUrl + badPaste.id
         return self._retrieve(url)
 
@@ -402,6 +418,7 @@ def retrieveUrlContent(url):
     respDfd = treq.get(url)
 
     def cbCheckResponseCode(response):
+        print(response)
         if response.code != 200:
             raise FailedToRetrieve(
                 'Expected 200 response from {url!r} but got {code}'.format(
