@@ -404,7 +404,7 @@ class FailedToRetrieve(Exception):
     pass
 
 
-def retrieveUrlContent(url):
+def retrieveUrlContent(url, client=treq):
     """
     Make a GET request to ``url``, verify 200 status response, and
     return a Deferred that fires with the content as a byte string.
@@ -415,10 +415,10 @@ def retrieveUrlContent(url):
     if isinstance(url, unicode):
         url = url.encode('utf-8')
     log.info(u'Attempting to retrieve {url!r}'.format(url=url))
-    respDfd = treq.get(url)
+    respDfd = client.get(url)
 
     def cbCheckResponseCode(response):
-        print(response)
+        #print('response!', response)
         if response.code != 200:
             raise FailedToRetrieve(
                 'Expected 200 response from {url!r} but got {code}'.format(
@@ -428,7 +428,7 @@ def retrieveUrlContent(url):
         return response
 
     respOkDfd = respDfd.addCallback(cbCheckResponseCode)
-    return respOkDfd.addCallback(treq.content)
+    return respOkDfd.addCallback(client.content)
 
 
 ### Support for outgoing pastes

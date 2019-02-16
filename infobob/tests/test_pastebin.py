@@ -3,15 +3,19 @@ import urllib
 import re
 
 from twisted.internet import defer
+from twisted.trial.unittest import SynchronousTestCase as TrialSyncTestCase
 from twisted.trial.unittest import TestCase as TrialTestCase
+from twisted.web.resource import IResource
+import treq.testing
 import ddt
+import zope.interface as zi
 
 from infobob import pastebin
 import infobob.tests.support as sp
 
 
 @ddt.ddt
-class ExtractBadPasteSpecsTestCase(unittest.TestCase):
+class ExtractBadPasteSpecsTestCase(TrialSyncTestCase):
     """
     Integration tests for bad pastebin URL detection.
     """
@@ -283,34 +287,24 @@ class GenericBadPastebinTestCase(TrialTestCase):
             yield self.bp.contentFromPaste(foreignBadPaste)
 
 
+@zi.implementer(IResource)
+class CustomResource(object):
+    isLeaf = True  # NB: means getChildWithDefault will not be called
 
-class RetrieveUrlContentTestCase(TrialTestCase):
-    @defer.inlineCallbacks
-    def setUp(self):
-        from twisted.internet import endpoints
-        from twisted.internet import reactor
-        from twisted.web.server import Site
-        import klein
+    def __init__(self, status, content):
+        self.status = status
+        self.content = content
 
-        self.app = klein.Klein()
+    def render(self, request):
+        request.setResponseCode(self.status)
+        return self.content
 
-        @self.app.route('/<int:status>/<string:content>')
-        def customize_response(request, status, content):
-            request.setResponseCode(status)
-            return content
 
-        self.site = Site(self.app.resource())
-        self.endpoint = endpoints.TCP4ServerEndpoint(reactor, 7777)
-        self.baseUrl = 'http://localhost:7777'
-
-        self.listeningPort = yield self.endpoint.listen(self.site)
-        self.addCleanup(self.listeningPort.stopListening)
-
+class RetrieveUrlContentTestCase(TrialSyncTestCase):
     def doRetrieve(self, status, content):
-        url = self.baseUrl + '/{0}/{1}'.format(
-            status, urllib.quote(content)
-        )
-        return pastebin.retrieveUrlContent(url)
+        self.treqStub = treq.testing.StubTreq(CustomResource(status, content))
+        url = 'http://example.com'
+        return pastebin.retrieveUrlContent(url, client=self.treqStub)
 
     def test_success(self):
         d = self.doRetrieve(200, b'foo bar')
@@ -318,5 +312,6 @@ class RetrieveUrlContentTestCase(TrialTestCase):
         return d
 
     def test_rejects_non_200_response(self):
-        raise NotImplementedError('not done yet')
-
+        d = self.doRetrieve(400, b'epic fail')
+        f = self.failureResultOf(d)
+        self.assertRegex(str(f), r'Expected 200 response .* but got 400')
