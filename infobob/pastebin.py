@@ -21,27 +21,33 @@ from infobob import util
 log = logger.Logger()
 
 
-# TODO: Document
 def make_repaster(paster):
+    """
+    Create the :class:`BadPasteRepaster` instance to be used by
+    the bot.
+
+    Requires an instance of :class:`Paster` which will be used
+    to re-host the bad pastes.
+    """
     badPastebins = [
         GenericBadPastebin(
             u'pastebin.com',
             [u'www.pastebin.com'],
-            makePasteIdFromFirstComponent(u'(?i)([a-z0-9]{4,12})'),
+            makePasteIdFromFirstComponent(u'([a-zA-Z0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'pastebin.ca',
             [u'www.pastebin.ca'],
-            makePasteIdFromFirstComponent(u'(?i)([0-9]{4,12})'),
+            makePasteIdFromFirstComponent(u'([0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'hastebin.com',
             [u'www.hastebin.com'],
-            makePasteIdFromFirstComponent(u'(?i)([a-z0-9]{4,12})'),
+            makePasteIdFromFirstComponent(u'([a-zA-Z0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
@@ -49,8 +55,15 @@ def make_repaster(paster):
     return BadPasteRepaster(badPastebins, paster)
 
 
-# TODO: Document
 def makePasteIdFromFirstComponent(pattern):
+    """
+    Create a function suitable for the ``pasteIdFromPath`` argument
+    to :class:`GenericBadPastebin`.
+
+    The (text string) pattern is matched against the first path
+    component, and must have a single capturing group to extract the
+    paste ID.
+    """
 
     def pasteIdFromFirstComponent(path):
         firstComponent, _, _ = path.lstrip(u'/').partition(u'/')
@@ -178,7 +191,6 @@ class BadPasteRepaster(object):
         defer.returnValue(repasted_url)
 
 
-# TODO: Test this
 class _RepasteCache(object):
     """
     Simple LRU cache for repaste URLs, which enforces a minimum
