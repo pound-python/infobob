@@ -53,7 +53,7 @@
         "#python": {
             "commands": [
                 ["deny", "all"],
-                ["allow", "lol", "codepad", "redent", "repaste"]
+                ["allow", "lol", "redent", "repaste"]
             ],
             "have_ops": true
         },

@@ -14,6 +14,7 @@ from twisted.trial.unittest import TestCase as TrialTestCase
 from zope.interface import implementer
 
 from infobob.http import makeSite, DEFAULT_TEMPLATES_DIR
+import infobob.tests.support as sp
 
 
 class WebUITestCase(TrialTestCase):
@@ -55,8 +56,8 @@ class WebUITestCase(TrialTestCase):
                 dt('2018-03-21T15:09:26'), b'bad behavior', None, b'',
             ),
         ]
-        dbpool = FakeObj()
-        dbpool.get_active_bans = DeferredSequentialReturner([bans])
+        dbpool = sp.FakeObj()
+        dbpool.get_active_bans = sp.DeferredSequentialReturner([bans])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.get(b'/bans')
@@ -77,8 +78,8 @@ class WebUITestCase(TrialTestCase):
                 dt('2018-02-10T18:28:18'), b'forgivingop!bar',
             ),
         ]
-        dbpool = FakeObj()
-        dbpool.get_recently_expired_bans = DeferredSequentialReturner([bans])
+        dbpool = sp.FakeObj()
+        dbpool.get_recently_expired_bans = sp.DeferredSequentialReturner([bans])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.get(b'/bans/expired')
@@ -103,8 +104,8 @@ class WebUITestCase(TrialTestCase):
                 dt('2018-02-10T18:28:18'), b'forgivingop!bar',
             ),
         ]
-        dbpool = FakeObj()
-        dbpool.get_all_bans = DeferredSequentialReturner([bans])
+        dbpool = sp.FakeObj()
+        dbpool.get_all_bans = sp.DeferredSequentialReturner([bans])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.get(b'/bans/all')
@@ -122,14 +123,14 @@ class WebUITestCase(TrialTestCase):
             dt('2018-03-14T15:09:26'), b'someop!foo',
             dt('2018-03-21T15:09:26'), b'bad behavior', None, b'',
         )
-        dbpool = FakeObj()
-        dbpool.get_ban_with_auth = DeferredSequentialReturner([ban])
+        dbpool = sp.FakeObj()
+        dbpool.get_ban_with_auth = sp.DeferredSequentialReturner([ban])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.get(b'/bans/edit/5/deadbeef')
         self.assertEqual(
             dbpool.get_ban_with_auth.calls,
-            [Call(b'5', b'deadbeef')],
+            [sp.Call(b'5', b'deadbeef')],
         )
         self.assertEqual(res.code, 200)
         self.assertIn(b'<form', content)
@@ -145,9 +146,9 @@ class WebUITestCase(TrialTestCase):
             dt('2018-03-14T15:09:26'), b'someop!foo',
             dt('2018-03-21T15:09:26'), b'bad behavior', None, b'',
         )
-        dbpool = FakeObj()
-        dbpool.get_ban_with_auth = DeferredSequentialReturner([ban])
-        dbpool.update_ban_by_rowid = DeferredSequentialReturner([None])
+        dbpool = sp.FakeObj()
+        dbpool.get_ban_with_auth = sp.DeferredSequentialReturner([ban])
+        dbpool.update_ban_by_rowid = sp.DeferredSequentialReturner([None])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.post(
@@ -156,11 +157,11 @@ class WebUITestCase(TrialTestCase):
         )
         self.assertEqual(
             dbpool.get_ban_with_auth.calls,
-            [Call(b'5', b'deadbeef')],
+            [sp.Call(b'5', b'deadbeef')],
         )
         self.assertEqual(
             dbpool.update_ban_by_rowid.calls,
-            [Call(b'5', None, b'they lost their chance')],
+            [sp.Call(b'5', None, b'they lost their chance')],
         )
         self.assertEqual(res.code, 200)
         self.assertIn(b'<form', content)
@@ -177,9 +178,9 @@ class WebUITestCase(TrialTestCase):
             dt('2018-03-14T15:09:26'), b'someop!foo',
             dt('2018-03-21T15:09:26'), b'bad behavior', None, b'',
         )
-        dbpool = FakeObj()
-        dbpool.get_ban_with_auth = DeferredSequentialReturner([ban])
-        dbpool.update_ban_by_rowid = DeferredSequentialReturner([None])
+        dbpool = sp.FakeObj()
+        dbpool.get_ban_with_auth = sp.DeferredSequentialReturner([ban])
+        dbpool.update_ban_by_rowid = sp.DeferredSequentialReturner([None])
         yield self.startWebUI(dbpool)
 
         res, content = yield self.post(
@@ -217,31 +218,6 @@ class XWWWFormUrlencodedProducer(object):
 
     def stopProducing(self):
         pass
-
-
-class FakeObj(object):
-    pass
-
-
-class DeferredSequentialReturner(object):
-    def __init__(self, return_values):
-        self._returns = list(reversed(return_values))
-        self.calls = []
-
-    def __call__(self, *args, **kwargs):
-        self.calls.append(Call(*args, **kwargs))
-        return defer.succeed(self._returns.pop())
-
-
-class Call(object):
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-
-    def __eq__(self, other):
-        if not isinstance(other, Call):
-            return NotImplemented
-        return (self.args, self.kwargs) == (other.args, other.kwargs)
 
 
 def dt(isoformatted):
