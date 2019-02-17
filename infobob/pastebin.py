@@ -21,31 +21,48 @@ from infobob import util
 log = logger.Logger()
 
 
+# TODO: Document
 def make_repaster(paster):
     badPastebins = [
         GenericBadPastebin(
             u'pastebin.com',
             [u'www.pastebin.com'],
-            u'([a-z0-9]{4,12})',
+            makePasteIdFromFirstComponent(u'(?i)([a-z0-9]{4,12})'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'pastebin.ca',
             [u'www.pastebin.ca'],
-            u'([0-9]{4,12})',
+            makePasteIdFromFirstComponent(u'(?i)([0-9]{4,12})'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'hastebin.com',
             [u'www.hastebin.com'],
-            u'([a-z0-9]{4,12})',
+            makePasteIdFromFirstComponent(u'(?i)([a-z0-9]{4,12})'),
             u'/raw/',
             retrieveUrlContent,
         ),
     ]
     return BadPasteRepaster(badPastebins, paster)
+
+
+# TODO: Document
+def makePasteIdFromFirstComponent(pattern):
+
+    def pasteIdFromFirstComponent(path):
+        firstComponent, _, _ = path.lstrip(u'/').partition(u'/')
+        m = re.match(pattern, firstComponent)
+        if not m:
+            raise ValueError(
+                'Could not locate paste ID from path {0!r}'.format(path)
+            )
+        (pasteId,) = m.groups()
+        return pasteId
+
+    return pasteIdFromFirstComponent
 
 
 class BadPasteRepaster(object):
@@ -105,6 +122,7 @@ class BadPasteRepaster(object):
             try:
                 paste = pb.identifyPaste(domain, *parsed[2:])
             except ValueError as e:
+                raise
                 log.warn(
                     u'Could not identify paste from URL {url!r}: {error!r}',
                     url=url,
@@ -334,31 +352,27 @@ class BadPaste(object):
         self.identity = u'{0}::{1}'.format(self.pastebinName, self.id)
 
 
-# TODO: Make this more generic by accepting a function instead of just
-#       a regex pattern, and call that function with the full URL path
-#       instead of just the first component.
 @zi.implementer(IBadPastebin)
 class GenericBadPastebin(object):
     """
-    A pastebin that produces paste URLs with an ID in the first
-    path component, and offers an alternate URL for downloading the
-    raw content given the ID.
+    A pastebin that produces paste URLs with an ID in the URL's path,
+    and offers a "raw" URL for downloading the raw content of a paste
+    given the ID.
 
-    ``pasteIdPattern`` is a (text) regular expression pattern used to
-    extract the paste ID from the first component in a paste URL. It
-    must contain a single capturing group for the ID itself.
+    ``pasteIdFromPath`` is a function used to extract the paste ID
+    from a paste URL's path (a text string).
     """
     def __init__(
         self,
         mainDomain,
         altDomains,
-        pasteIdPattern,
+        pasteIdFromPath,
         rawUrlPathPrefix,
         rawContentRetriever,
     ):
         self.name = mainDomain
         self.domains = (mainDomain,) + tuple(altDomains)
-        self._pasteIdRegex = re.compile(pasteIdPattern, flags=re.IGNORECASE)
+        self._pasteIdFromPath = pasteIdFromPath
         self._baseRawUrl = urlparse.urlunparse((
             u'https',
             mainDomain,
@@ -374,13 +388,7 @@ class GenericBadPastebin(object):
             raise ValueError('Unknown domain {domain!r} for {self!r}'.format(
                 domain=domain, self=self
             ))
-        firstComponent, _, _ = path.lstrip('/').partition('/')
-        m = self._pasteIdRegex.match(firstComponent)
-        if not m:
-            raise ValueError(
-                'Could not locate paste ID from path {0!r}'.format(path)
-            )
-        (pasteId,) = m.groups()
+        pasteId = self._pasteIdFromPath(path)
         return BadPaste(pastebinName=self.name, id=pasteId)
 
     def contentFromPaste(self, badPaste):

@@ -5,21 +5,32 @@ class FakeObj(object):
     pass
 
 
-class DeferredSequentialReturner(object):
+class SequentialReturner(object):
     """
-    Record calls and return Deferreds that fire with the provided
-    return values in sequence.
+    Record calls and return the provide values in sequence.
     """
     def __init__(self, return_values):
         self.reset(return_values)
 
     def __call__(self, *args, **kwargs):
         self.calls.append(Call(*args, **kwargs))
-        return defer.succeed(self._returns.pop())
+        return self._returns.pop()
 
     def reset(self, return_values):
         self._returns = list(reversed(return_values))
         self.calls = []
+
+
+class DeferredSequentialReturner(SequentialReturner):
+    """
+    Record calls and return Deferreds that fire with the provided
+    return values in sequence.
+    """
+    def __call__(self, *args, **kwargs):
+        returnValue = super(DeferredSequentialReturner, self).__call__(
+            *args, **kwargs
+        )
+        return defer.succeed(returnValue)
 
 
 class Call(object):

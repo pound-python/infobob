@@ -235,10 +235,16 @@ def contentFromPathComponent(url):
 @ddt.ddt
 class GenericBadPastebinTestCase(TrialTestCase):
     def setUp(self):
-        self.bp = pastebin.GenericBadPastebin(
+        pasteIdGrabber = pastebin.makePasteIdFromFirstComponent(
+            u'([0-9]{4,12})'
+        )
+        self.bp = self.makeOne(pasteIdGrabber)
+
+    def makeOne(self, pasteIdFromPath):
+        return pastebin.GenericBadPastebin(
             u'paste.example.com',
             [u'alt1.paste.example.com', 'alt2.paste.example.com'],
-            u'([0-9]{4,12})',
+            pasteIdFromPath,
             u'/raw/',
             contentFromPathComponent,
         )
@@ -257,10 +263,22 @@ class GenericBadPastebinTestCase(TrialTestCase):
         with self.assertRaisesRegexp(ValueError, errPattern):
             self.bp.identifyPaste(u'wrong.example.com', None, None, None, None)
 
-    # TODO: Implement this
-    @unittest.skip('To be implemented after refactor away from pasteIdPattern')
-    def test_identify_paths(self, path):
-        self.assertFalse(True)
+    def test_identify_delegates(self):
+        idFinder = sp.SequentialReturner([u'1234'])
+        bp = self.makeOne(idFinder)
+        result = bp.identifyPaste(
+            u'paste.example.com',
+            u'/id/path',
+            u'',
+            u'',
+            u'',
+        )
+        self.assertEqual(
+            result,
+            pastebin.BadPaste(u'paste.example.com', u'1234'),
+        )
+        expectedCall = sp.Call(u'/id/path')
+        self.assertEqual(idFinder.calls, [expectedCall])
 
     @ddt.data(u'/', u'/alpha', u'/123')
     def test_identify_rejects_nonmatching_path(self, path):
