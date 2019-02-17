@@ -497,18 +497,18 @@ class Paster(object):
             key=lambda pb: self._pastebinLatencies
         )
         for pb in bestFirst:
-            log.info(u'Trying pastebin {pb_name!r}', pb_name=pb_name)
+            log.info(u'Trying pastebin {pb_name!r}', pb_name=pb.name)
             try:
                 start = time.time()
                 url = yield pb.createPaste(data, language)
                 latency = time.time() - start
             except Exception:
-                log.failure(u'Error pasting to {pastebin}', pastebin=name)
+                log.failure(u'Error pasting to {pastebin}', pastebin=pb.name)
                 self._pastebinLatencies[pb.name] = _INF
                 continue
             else:
                 self._pastebinLatencies[pb.name] = latency
-                log.info(u'Pasted to {pb_name!r}', pb_name=pb_name)
+                log.info(u'Pasted to {pb_name!r}', pb_name=pb.name)
                 defer.returnValue(url)
 
         log.error(
