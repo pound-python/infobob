@@ -6,9 +6,18 @@ install_requires = [
     'lxml==3.6.0',
     'Pygments==1.4',
     'python-dateutil==2.5.3',
-    'Twisted[tls]==16.1.1',
+    'Twisted[tls]==16.4.0',
     'klein',
+    'treq',
+    'attrs',
 ]
+
+extras_require = {
+    'testing': [
+        'coverage',
+        'ddt',
+    ],
+}
 
 setup(
     name='infobob',
@@ -20,4 +29,5 @@ setup(
     packages=['infobob', 'infobob.tests', 'twisted.plugins'],
     include_package_data=True,
     install_requires=install_requires,
+    extras_require=extras_require,
 )
