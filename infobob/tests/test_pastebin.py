@@ -94,6 +94,27 @@ class ExtractBadPasteSpecsTestCase(TrialSyncTestCase):
             message, [pastebin.BadPaste(u'pastebin.com', u'idid')]
         )
 
+    @ddt.unpack
+    @ddt.data(
+        (u'pastebin.com', u'/raw/abYZ09', u'abYZ09'),
+        (u'hastebin.com', u'/raw/abcxyz', u'abcxyz'),
+    )
+    def test_raw_url_paths(self, domain, path, pasteid):
+        url = u'https://{0}{1}'.format(domain, path)
+        expected = pastebin.BadPaste(domain, pasteid)
+        self.assertResults(url.encode('ascii'), [expected])
+
+    @ddt.unpack
+    @ddt.data(*[
+        (pfx + u'abcxyz' + sfx, u'abcxyz')
+        for pfx in (u'/', u'/raw/')
+        for sfx in (u'.', u'.a', u'.longsuffix')
+    ])
+    def test_hastebin_suffix_ignored(self, path, pasteid):
+        url = u'https://hastebin.com{0}'.format(path)
+        expected = pastebin.BadPaste(u'hastebin.com', pasteid)
+        self.assertResults(url.encode('ascii'), [expected])
+
     # TODO: Add some tricky messages, like those involving URLs with
     #       trailing punctuation, no-scheme URLs with leading chars, etc.
 
@@ -235,7 +256,7 @@ def contentFromPathComponent(url):
 @ddt.ddt
 class GenericBadPastebinTestCase(TrialTestCase):
     def setUp(self):
-        pasteIdGrabber = pastebin.makePasteIdFromFirstComponent(
+        pasteIdGrabber = pastebin.pasteIdFromFirstComponent(
             u'([0-9]{4,12})'
         )
         self.bp = self.makeOne(pasteIdGrabber)
