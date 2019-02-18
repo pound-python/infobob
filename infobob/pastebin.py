@@ -33,21 +33,21 @@ def make_repaster(paster):
         GenericBadPastebin(
             u'pastebin.com',
             [u'www.pastebin.com'],
-            makePasteIdFromFirstComponent(u'([a-zA-Z0-9]{4,12})$'),
+            pasteIdFromFirstOrRaw(u'([a-zA-Z0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'pastebin.ca',
             [u'www.pastebin.ca'],
-            makePasteIdFromFirstComponent(u'([0-9]{4,12})$'),
+            pasteIdFromFirstComponent(u'([0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
         GenericBadPastebin(
             u'hastebin.com',
             [u'www.hastebin.com'],
-            makePasteIdFromFirstComponent(u'([a-zA-Z0-9]{4,12})$'),
+            pasteIdFromFirstOrRaw(u'([a-zA-Z0-9]{4,12})$'),
             u'/raw/',
             retrieveUrlContent,
         ),
@@ -55,7 +55,7 @@ def make_repaster(paster):
     return BadPasteRepaster(badPastebins, paster)
 
 
-def makePasteIdFromFirstComponent(pattern):
+def pasteIdFromFirstComponent(pattern):
     """
     Create a function suitable for the ``pasteIdFromPath`` argument
     to :class:`GenericBadPastebin`.
@@ -65,17 +65,52 @@ def makePasteIdFromFirstComponent(pattern):
     paste ID.
     """
 
-    def pasteIdFromFirstComponent(path):
+    def locatePasteId(path):
         firstComponent, _, _ = path.lstrip(u'/').partition(u'/')
-        m = re.match(pattern, firstComponent)
-        if not m:
-            raise ValueError(
-                'Could not locate paste ID from path {0!r}'.format(path)
-            )
-        (pasteId,) = m.groups()
-        return pasteId
+        pasteId = _matchPasteId(pattern, firstComponent)
+        if pasteId is not None:
+            return pasteId
+        raise ValueError(
+            'Could not locate paste ID from path {0!r}'.format(path)
+        )
 
-    return pasteIdFromFirstComponent
+    return locatePasteId
+
+
+def pasteIdFromFirstOrRaw(pattern):
+    """
+    Create a function suitable for the ``pasteIdFromPath`` argument
+    to :class:`GenericBadPastebin` which supports ``/raw/${PASTE_ID}``
+    URLs as well.
+
+    The (text string) pattern is matched against the first path
+    component (or second if the first is exactly ``"raw"``), and must
+    have a single capturing group to extract the paste ID.
+    """
+
+    def locatePasteId(path):
+        components = path.lstrip(u'/').split(u'/', 3)[:2]
+        pasteId = None
+        if len(components) == 2 and components[0] == 'raw':
+            pasteId = _matchPasteId(pattern, components[1])
+        elif len(components) == 1:
+            pasteId = _matchPasteId(pattern, components[0])
+
+        if pasteId is not None:
+            return pasteId
+        raise ValueError(
+            'Could not locate paste ID from path {0!r}'.format(path)
+        )
+
+    return locatePasteId
+
+
+def _matchPasteId(pattern, component):
+    m = re.match(pattern, component)
+    if not m:
+        return None
+    (pasteId,) = m.groups()
+    return pasteId
 
 
 class BadPasteRepaster(object):
