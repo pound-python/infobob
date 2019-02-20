@@ -6,11 +6,13 @@ Read from bad pastebins, and post to good pastebins.
 import re
 import operator
 import urlparse
+import urllib
 import time
 
 from twisted.internet import reactor
 from twisted.internet import defer
-from twisted.web import client, xmlrpc
+from twisted.web import xmlrpc
+from twisted.web.http_headers import Headers
 from twisted import logger
 import treq
 import zope.interface as zi
@@ -490,6 +492,7 @@ def retrieveUrlContent(url, client=treq):
 
 def make_paster():
     pastebins = [
+        PinnwandPastebin(u'bpaste'),
         SpacepastePastebin(u'habpaste', u'https://paste.pound-python.org'),
     ]
     return Paster(pastebins)
@@ -647,3 +650,48 @@ class SpacepastePastebin(object):
             self._serviceUrl,
             pasteId.decode('ascii'),
         ))
+
+
+@zi.implementer(IPastebin)
+class PinnwandPastebin(object):
+    def __init__(self, name, client=treq):
+        self.name = name
+        self._client = client
+        # For now just hardcode, no clue if other pastebins run this.
+        self._baseUrl = u'https://bpaste.net'
+        self._uploadUrl = self._baseUrl + u'/json/new'
+        self._showUrlPrefix = self._baseUrl + u'/show/'
+        # Valid values are 1day, 1week, and 1month.
+        self._expiry = b'1day'
+
+    def checkIfAvailable(self):
+        # Uh, I dunno. Just grab the main page I guess.
+        d = retrieveUrlContent(
+            self._baseUrl.encode('ascii'), client=self._client
+        )
+
+        def ebLogAndReportUnavailable(f):
+            log.failure(
+                u'Unable to communicate with {pb_name!r} pastebin',
+                pb_name=self.name,
+            )
+            return False
+
+        return d.addCallbacks(lambda _: True, ebLogAndReportUnavailable)
+
+    @defer.inlineCallbacks
+    def createPaste(self, content, language):
+        payload = urllib.urlencode({
+            b'lexer': b'python' if language == b'python' else b'text',
+            b'code': content,
+            b'expiry': self._expiry,
+        })
+        response = yield self._client.post(
+            self._uploadUrl.encode('ascii'),
+            data=payload,
+            headers=Headers(
+                {b'Content-Type': [b'application/x-www-form-urlencoded']}
+            ),
+        )
+        structure = yield response.json()
+        defer.returnValue(self._showUrlPrefix + structure['paste_id'])
