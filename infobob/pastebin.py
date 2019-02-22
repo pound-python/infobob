@@ -636,6 +636,7 @@ class SpacepastePastebin(object):
             log.failure(
                 u'Unable to communicate with {pb_name!r} pastebin',
                 pb_name=self.name,
+                failure=f,
             )
             return False
 
