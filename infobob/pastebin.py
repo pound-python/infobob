@@ -661,8 +661,7 @@ class PinnwandPastebin(object):
         # For now just hardcode, no clue if other pastebins run this.
         self._baseUrl = u'https://bpaste.net'
         self._uploadUrl = self._baseUrl + u'/json/new'
-        self._showUrlPrefix = self._baseUrl + u'/show/'
-        # Valid values are 1day, 1week, and 1month.
+        # Valid values are 1day, 1week
         self._expiry = b'1day'
 
     def checkIfAvailable(self):
@@ -695,4 +694,4 @@ class PinnwandPastebin(object):
             ),
         )
         structure = yield response.json()
-        defer.returnValue(self._showUrlPrefix + structure['paste_id'])
+        defer.returnValue(structure['paste_url'])
