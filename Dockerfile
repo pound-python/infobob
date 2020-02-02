@@ -1,10 +1,8 @@
 FROM pypy:2
 
 WORKDIR /usr/src/app
-COPY current-requirements.txt ./
-RUN pip wheel --no-cache-dir -r current-requirements.txt -w wheelhouse
 COPY . ./src/
-RUN pip wheel --no-cache-dir --no-deps ./src -w wheelhouse
+RUN pip wheel --no-cache-dir ./src -w wheelhouse
 
 FROM pypy:2-slim
 

@@ -2,7 +2,6 @@
 *
 !README.rst
 !COPYING
-!current-requirements.txt
 !setup.py
 !MANIFEST.in
 !db.schema
