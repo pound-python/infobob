@@ -20,12 +20,12 @@ COPY infobob.cfg.example db.schema ./
 RUN mkdir -p /app/db
 RUN sqlite3 <db.schema /app/db/infobob.sqlite
 RUN chown -R infobob: /app
+
+ARG INFOBOB_COMMIT=<unknown>
+ENV INFOBOB_COMMIT=${INFOBOB_COMMIT}
+LABEL infobob_commit=${INFOBOB_COMMIT}
+
 VOLUME /app
 USER infobob
 ENTRYPOINT ["twistd", "--pidfile=", "-n", "infobob"]
 CMD ["infobob.cfg.example"]
-
-# SOURCE_COMMIT is provided by the Docker Hub build environment.
-ARG SOURCE_COMMIT=<unknown>
-ENV INFOBOB_COMMIT=${SOURCE_COMMIT}
-LABEL infobob_commit=${SOURCE_COMMIT}

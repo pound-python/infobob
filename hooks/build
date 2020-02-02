@@ -1,0 +1,12 @@
+#!/bin/bash
+set -ex
+
+# Docker Hub build hook
+# https://docs.docker.com/docker-hub/builds/advanced/#override-build-test-or-push-commands
+
+# SOURCE_COMMIT, DOCKERFILE_PATH, and IMAGE_NAME are provided by
+# the Docker Hub build environment.
+docker build \
+    --build-arg INFOBOB_COMMIT="${SOURCE_COMMIT}" \
+    -f $DOCKERFILE_PATH \
+    -t $IMAGE_NAME .
