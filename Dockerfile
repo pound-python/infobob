@@ -14,7 +14,7 @@ RUN adduser --system --group --home /usr/src/app --disabled-login infobob
 
 WORKDIR /usr/src/app
 COPY --from=0 /usr/src/app/wheelhouse wheelhouse
-RUN pip install ./wheelhouse/*
+RUN pip install --no-cache-dir --no-deps --no-index ./wheelhouse/*
 
 COPY infobob.cfg.example db.schema ./
 RUN mkdir -p /app/db
