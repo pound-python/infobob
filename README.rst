@@ -1,6 +1,6 @@
 This is the minimal setup:
 
-1.  Install requirements in a virtualenv.
+1.  Install into a virtualenv (`venv/bin/pip install .`).
 
 2.  Copy infobob.cfg.example to a new file (say, tester.cfg.json) and edit it:
 

@@ -1,10 +1,8 @@
 FROM pypy:2
 
 WORKDIR /usr/src/app
-COPY current-requirements.txt ./
-RUN pip wheel --no-cache-dir -r current-requirements.txt -w wheelhouse
 COPY . ./src/
-RUN pip wheel --no-cache-dir --no-deps ./src -w wheelhouse
+RUN pip wheel --no-cache-dir ./src -w wheelhouse
 
 FROM pypy:2-slim
 
@@ -16,7 +14,7 @@ RUN adduser --system --group --home /usr/src/app --disabled-login infobob
 
 WORKDIR /usr/src/app
 COPY --from=0 /usr/src/app/wheelhouse wheelhouse
-RUN pip install ./wheelhouse/*
+RUN pip install --no-cache-dir --no-deps --no-index ./wheelhouse/*
 
 COPY infobob.cfg.example db.schema ./
 RUN mkdir -p /app/db
@@ -26,3 +24,8 @@ VOLUME /app
 USER infobob
 ENTRYPOINT ["twistd", "--pidfile=", "-n", "infobob"]
 CMD ["infobob.cfg.example"]
+
+# SOURCE_COMMIT is provided by the Docker Hub build environment.
+ARG SOURCE_COMMIT=<unknown>
+ENV INFOBOB_COMMIT=${SOURCE_COMMIT}
+LABEL infobob_commit=${SOURCE_COMMIT}

@@ -1,0 +1,16 @@
+# Exclude everything, then include just what's necessary.
+*
+!README.rst
+!COPYING
+!setup.py
+!MANIFEST.in
+!db.schema
+!infobob.cfg.example
+# `!infobob/**/*.py` would be nicer, but "Exception patterns in .dockerignore
+# do not support wildcard directories" (https://github.com/moby/moby/issues/30018).
+!infobob/*.py
+!infobob/tests/*.py
+!infobob/locale/infobob/*.po
+!infobob/locale/infobob/*.pot
+!infobob/templates/*.html
+!twisted/plugins/*.py
