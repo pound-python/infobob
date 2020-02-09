@@ -1,0 +1,21 @@
+version: "3.7"
+services:
+
+  charybdis:
+    build: ./apps/charybdis
+    volumes:
+      - charybdis-logs:/var/log/charybdis
+    ports:
+      - "6667:6667"
+
+  atheme:
+    build: ./apps/atheme
+    volumes:
+      - atheme-db:/var/lib/atheme
+    ports:
+      - "8080:8080"
+    #command: ["-d"]
+
+volumes:
+  charybdis-logs:
+  atheme-db:
