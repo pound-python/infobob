@@ -169,14 +169,32 @@ MDEP groupserv/set_public
 MDEP groupserv/set_url 
 MDEP misc/httpd 
 MDEP transport/xmlrpc 
-LUID AAAAAAAABA 
+LUID AAAAAAAAD 
 CF +AFORVbefiorstv 
-MU AAAAAAAAB god $1$twenok$w.GFjS5sd8Dwzy80Rvbao0 god@infobobtest.local 1581288499 1581288518 +sC default 
+MU AAAAAAAAB god $1$twenok$w.GFjS5sd8Dwzy80Rvbao0 god@infobobtest.local 1581288499 1581456564 +sC default 
 MDU god private:host:actual ~someone@172.18.0.1
 MDU god private:host:vhost ~someone@172.18.0.1
-MN god god 1581288499 1581288499 
+MN god god 1581288499 1581455982 
+MU AAAAAAAAC infotest $1$rbpzdt$T0oFBzoYfOlDVGHXuqPDj1 infotest@infobobtest.local 1581450901 1581455939 +sC default 
+MDU infotest private:host:actual ~infotest@172.18.0.1
+MDU infotest private:host:vhost ~infotest@172.18.0.1
+MN infotest infotest 1581450901 1581455939 
+MU AAAAAAAAD monitor $1$ezykto$baCsHKVXc7b9oxIWxJo/1/ monitor@infobobtest.local 1581455969 1581455978 +sCb default 
+MDU monitor private:host:actual ~someone@172.18.0.1
+MDU monitor private:host:vhost ~someone@172.18.0.1
+MN monitor monitor 1581455969 1581455978 
 GDBV 4 
 GFA +fscmviA 
+MC ##offtopic 1581450607 1581455880 + 272 6 0  
+CA ##offtopic god +AFORfiorstv 1581450607 god 
+CA ##offtopic infotest +Aeiortv 1581451119 god 
+MDC ##offtopic disable_fantasy on
+MDC ##offtopic private:channelts 1581455879
+MC #project 1581450377 1581455880 + 8192 0 0  
+CA #project god +AFORfiorstv 1581450377 god 
+CA #project infotest +Aeiortv 1581451092 god 
+MDC #project disable_fantasy on
+MDC #project private:channelts 1581455808
 KID 0 
 XID 0 
 QID 0 
