@@ -3,6 +3,7 @@ import json
 import pathlib
 import sqlite3
 import time
+import sys
 
 import pytest
 import pytest_twisted as pytest_tw
@@ -11,24 +12,33 @@ from twisted.internet import defer
 from twisted.internet import task
 from twisted.internet import endpoints
 from twisted.internet.error import ProcessDone
+from twisted import logger
 
 import clients
+from config import (
+    INFOBOB_PYTHON,
+    INFOTEST,
+    MONITOR,
+    SCHEMA_PATH,
+    IRCD_HOST,
+    IRCD_PORT,
+    WEBUI_PORT,
+)
 
 
-HERE = pathlib.Path(__name__).parent.resolve()
-SCHEMA = HERE.parent.joinpath('db.schema')
-
-SERVER = 'localhost'
-SERVER_PORT = 6667
-INFOBOB_NICK = 'infotest'
-INFOBOB_PASS = 'infotestpass'
-INFOBOB_WEB_PORT = 8888
+@pytest.fixture(scope='session', autouse=True)
+def fixture_start_logging():
+    """
+    Start up twisted.logger machinery.
+    """
+    observers = [logger.textFileLogObserver(sys.stderr)]
+    logger.globalLogBeginner.beginLoggingTo(
+        observers, redirectStandardIO=False)
 
 
 @pytest.fixture(name='start_infobob')
 def fixture_start_infobob(tmp_path):
-    infobob_python = pathlib.Path(os.environ['INFOBOB_PYTHON']).resolve()
-    infobob_twistd = str(infobob_python.parent.joinpath('twistd'))
+    infobob_twistd = str(INFOBOB_PYTHON.parent.joinpath('twistd'))
     called = False
     spawned = None
     ended = None
@@ -44,11 +54,11 @@ def fixture_start_infobob(tmp_path):
         dbpath = tmp_path.joinpath('infobob.db')
         conf = {
             'irc': {
-                'server': SERVER,
-                'port': SERVER_PORT,
+                'server': IRCD_HOST,
+                'port': IRCD_PORT,
                 'ssl': False,
-                'nickname': INFOBOB_NICK,
-                'password': INFOBOB_PASS,
+                'nickname': INFOTEST.nickname,
+                'password': INFOTEST.password,
                 'nickserv_pw': None,
                 'autojoin': autojoin,
             },
@@ -61,18 +71,20 @@ def fixture_start_infobob(tmp_path):
                 **channelsconf,
             },
             'database': {'sqlite': {'db_file': dbpath.name}},
-            'web': {'port': INFOBOB_WEB_PORT},
+            'web': {
+                'port': WEBUI_PORT,
+                'url': f'http://localhost:{WEBUI_PORT}',
+            },
             'misc': {'manhole': {'socket': None}},
         }
         conn = sqlite3.connect(str(dbpath))
         with conn:
-            conn.executescript(SCHEMA.read_text())
+            conn.executescript(SCHEMA_PATH.read_text())
         conn.close()
         confpath.write_text(json.dumps(conf))
         from twisted.internet import reactor
         proto = InfobobProcessProtocol()
         args = [infobob_twistd, '-n', 'infobob', confpath.name]
-        print('running', args)
         childFDs = {
             0: open(os.devnull, 'rb').fileno(),
             #1: open(os.devnull, 'wb').fileno(),
@@ -101,24 +113,27 @@ def fixture_start_infobob(tmp_path):
 
 
 class InfobobProcessProtocol(protocol.ProcessProtocol):
+    log = logger.Logger()
+
     def __init__(self):
         self.ended = defer.Deferred()
 
     def connectionMade(self):
-        print('Infobob started')
+        self.log.info('Infobob started')
         self.transport.closeStdin()
 
     def outReceived(self, data: bytes):
-        print('Got chunk of stdout:', data.decode('utf-8').rstrip('\r\n'))
+        self.log.info("stdout: " + data.decode('utf-8').rstrip('\r\n'))
 
     def errReceived(self, data: bytes):
-        print('Got chunk of stderr:', data.decode('utf-8').rstrip('\r\n'))
+        self.log.info("stderr: " + data.decode('utf-8').rstrip('\r\n'))
 
     def processEnded(self, status):
-        print('Infobob exited', status.value)
         if status.check(ProcessDone) is None:
+            self.log.warn('Infobob exited: {status}', status=status)
             self.ended.errback(status)
         else:
+            self.log.info('Infobob exited cleanly')
             self.ended.callback(None)
 
 
@@ -126,14 +141,18 @@ class InfobobProcessProtocol(protocol.ProcessProtocol):
 def test_infobob_basic(start_infobob):
     from twisted.internet import reactor
 
-    monitor = clients.ComposedIRCClientFactory('monitor')
+    monitor = clients.ComposedIRCClientFactory(
+        MONITOR.nickname, MONITOR.password)
     endpoint = endpoints.TCP4ClientEndpoint(
-        reactor, SERVER, SERVER_PORT, timeout=5)
+        reactor, IRCD_HOST, IRCD_PORT, timeout=5)
     yield endpoint.connect(monitor).addCallback(lambda p: p.signOnComplete)
     yield defer.gatherResults([
         monitor.joinChannel('#project'),
         monitor.joinChannel('##offtopic'),
     ])
 
-    start_infobob(channelsconf={}, autojoin=['#project', '##offtopic'])
-    yield task.deferLater(reactor, 5, lambda: None)
+    start_infobob(channelsconf={
+        '#project': {'have_ops': True},
+        '##offtopic': {'have_ops': True},
+    }, autojoin=['#project', '##offtopic'])
+    yield task.deferLater(reactor, 300, lambda: None)

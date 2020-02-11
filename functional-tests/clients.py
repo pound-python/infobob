@@ -59,8 +59,9 @@ class ComposedIRCClient(irc.IRCClient):
     """
     log = Logger()
 
-    def __init__(self, nickname: str):
+    def __init__(self, nickname: str, password: str):
         self.nickname = nickname
+        self.password = password
         self.signOnComplete = defer.Deferred()
 
     def signedOn(self):
@@ -69,17 +70,24 @@ class ComposedIRCClient(irc.IRCClient):
     def joined(self, channel: str) -> None:
         self.factory.actions.myJoins.complete(channel)
 
+    def irc_unknown(self, command, prefix, params):
+        self.log.warn(
+            "received command we aren't prepared to handle: {cmd} {pfx} {pms}",
+            cmd=command, pfx=prefix, pms=params,
+        )
+
 
 class ComposedIRCClientFactory(Factory):
-    def __init__(self, nickname: str):
+    def __init__(self, nickname: str, password: str):
         self.nickname = nickname
+        self.password = password
         self.actions = None
 
     def startFactory(self):
         self.actions = Actions()
 
     def buildProtocol(self, addr):
-        proto = ComposedIRCClient(self.nickname)
+        proto = ComposedIRCClient(self.nickname, self.password)
         proto.factory = self
         self.p = proto
         return proto
