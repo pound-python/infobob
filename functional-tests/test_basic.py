@@ -30,12 +30,12 @@ def fixture_start_infobob(tmp_path):
     infobob_python = pathlib.Path(os.environ['INFOBOB_PYTHON']).resolve()
     infobob_twistd = str(infobob_python.parent.joinpath('twistd'))
     called = False
-    proctransport = None
+    spawned = None
     ended = None
 
     def start_infobob(channelsconf, autojoin):
         nonlocal called
-        nonlocal proctransport
+        nonlocal spawned
         nonlocal ended
         if called:
             raise RuntimeError('already called')
@@ -81,7 +81,8 @@ def fixture_start_infobob(tmp_path):
             2: 'r',
         }
         ended = proto.ended
-        proctransport = reactor.spawnProcess(
+        spawned = defer.execute(
+            reactor.spawnProcess,
             proto,
             infobob_twistd,
             args=args,
@@ -91,9 +92,12 @@ def fixture_start_infobob(tmp_path):
         )
 
     yield start_infobob
-    if proctransport is not None:
-        proctransport.signalProcess('TERM')
-        return pytest_tw.blockon(ended)
+
+    def cbStop(procTransport):
+        if procTransport.pid is not None:
+            procTransport.signalProcess('INT')
+        return ended
+    return pytest_tw.blockon(spawned.addCallback(cbStop))
 
 
 class InfobobProcessProtocol(protocol.ProcessProtocol):
