@@ -12,17 +12,19 @@ from twisted.internet import defer
 from twisted.internet import task
 from twisted.internet import endpoints
 from twisted.internet.error import ProcessDone
+from twisted.web import xmlrpc
 from twisted import logger
 
 import clients
 from config import (
+    SCHEMA_PATH,
     INFOBOB_PYTHON,
+    WEBUI_PORT,
     INFOTEST,
     MONITOR,
-    SCHEMA_PATH,
     IRCD_HOST,
     IRCD_PORT,
-    WEBUI_PORT,
+    SERVICES_XMLRPC_URL,
 )
 
 
@@ -34,6 +36,40 @@ def fixture_start_logging():
     observers = [logger.textFileLogObserver(sys.stderr)]
     logger.globalLogBeginner.beginLoggingTo(
         observers, redirectStandardIO=False)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def fixture_registrations():
+    from twisted.internet import reactor
+    proxy = xmlrpc.Proxy(
+        SERVICES_XMLRPC_URL.encode('ascii'),
+        connectTimeout=5.0,
+        reactor=reactor,
+    )
+    users = [INFOTEST, MONITOR]
+    dfd = defer.succeed(None)
+    for creds in users:
+        dfd.addCallback(
+            lambda _: checkRegistered(proxy, creds.nickname, creds.password)
+        )
+    return pytest_tw.blockon(dfd)
+
+
+def checkRegistered(proxy, nickname, password):
+    # https://github.com/atheme/atheme/blob/v7.2.9/doc/XMLRPC
+    def ebExplain(failure):
+        failure.trap(xmlrpc.Fault)
+        fault = failure.value
+        raise AthemeLoginFailed(
+            f'While logging in as {nickname}, got {fault}'
+        ) from fault
+
+    loginDfd = proxy.callRemote('atheme.login', nickname, password)
+    return loginDfd.addCallback(lambda _: None).addErrback(ebExplain)
+
+
+class AthemeLoginFailed(Exception):
+    pass
 
 
 @pytest.fixture(name='start_infobob')

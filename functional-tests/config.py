@@ -46,6 +46,10 @@ INFOBOB_PYTHON = pathlib.Path(os.environ['INFOBOB_PYTHON']).resolve()
 
 # Configurable defaults, change by setting as enviroment variables prefixed
 # with `INFOBOB_FUNCTEST_<varname>`.
+WEBUI_PORT = _maybeEnv('WEBUI_PORT', 8888, int)
+
 IRCD_HOST = _maybeEnv('IRCD_HOST', 'localhost')
 IRCD_PORT = _maybeEnv('IRCD_PORT', 6667, int)
-WEBUI_PORT = _maybeEnv('WEBUI_PORT', 8888, int)
+SERVICES_XMLRPC_URL = _maybeEnv(
+    'SERVICES_XMLRPC_URL', 'http://localhost:8080/xmlrpc'
+)
