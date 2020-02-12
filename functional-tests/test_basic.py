@@ -141,11 +141,12 @@ def fixture_start_infobob(tmp_path):
 
     yield start_infobob
 
-    def cbStop(procTransport):
-        if procTransport.pid is not None:
-            procTransport.signalProcess('INT')
-        return ended
-    return pytest_tw.blockon(spawned.addCallback(cbStop))
+    if spawned is not None:
+        def cbStop(procTransport):
+            if procTransport.pid is not None:
+                procTransport.signalProcess('INT')
+            return ended
+        return pytest_tw.blockon(spawned.addCallback(cbStop))
 
 
 class InfobobProcessProtocol(protocol.ProcessProtocol):
@@ -177,15 +178,17 @@ class InfobobProcessProtocol(protocol.ProcessProtocol):
 def test_infobob_basic(start_infobob):
     from twisted.internet import reactor
 
-    monitor = clients.ComposedIRCClientFactory(
-        MONITOR.nickname, MONITOR.password)
+    # This part could be used to test ComposedIRCController and friends...
     endpoint = endpoints.TCP4ClientEndpoint(
         reactor, IRCD_HOST, IRCD_PORT, timeout=5)
-    yield endpoint.connect(monitor).addCallback(lambda p: p.signOnComplete)
+    monitor = yield clients.ComposedIRCController.connect(
+        endpoint, MONITOR.nickname, MONITOR.password)
     yield defer.gatherResults([
         monitor.joinChannel('#project'),
         monitor.joinChannel('##offtopic'),
     ])
+    assert '#project' in monitor._proto.state.channels._channels
+    assert '##offtopic' in monitor._proto.state.channels._channels
 
     start_infobob(channelsconf={
         '#project': {'have_ops': True},
