@@ -78,6 +78,7 @@ def fixture_start_infobob(tmp_path):
     called = False
     spawned = None
     ended = None
+    fixlog = logger.Logger(namespace=f'{__name__}.fixture_start_infobob')
 
     def start_infobob(channelsconf, autojoin):
         nonlocal called
@@ -146,7 +147,14 @@ def fixture_start_infobob(tmp_path):
             if procTransport.pid is not None:
                 procTransport.signalProcess('INT')
             return ended
-        return pytest_tw.blockon(spawned.addCallback(cbStop))
+
+        def ebLogAndRaise(f):
+            fixlog.failure('Ugh, i dunno', f)
+            return f
+
+        return pytest_tw.blockon(
+            spawned.addCallback(cbStop).addErrback(ebLogAndRaise)
+        )
 
 
 class InfobobProcessProtocol(protocol.ProcessProtocol):
@@ -194,4 +202,4 @@ def test_infobob_basic(start_infobob):
         '#project': {'have_ops': True},
         '##offtopic': {'have_ops': True},
     }, autojoin=['#project', '##offtopic'])
-    yield task.deferLater(reactor, 300, lambda: None)
+    yield task.deferLater(reactor, 10, lambda: None)

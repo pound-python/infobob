@@ -1,6 +1,6 @@
 from __future__ import annotations
 import enum
-from typing import MutableMapping
+from typing import MutableMapping, MutableSet, Callable, Sequence
 
 from twisted.words.protocols import irc
 from twisted.internet.protocol import Factory
@@ -11,7 +11,7 @@ import zope.interface as zi
 import attr
 
 
-def _add_numerics():
+def _add_numerics() -> None:
     numeric_addendum = dict(
         RPL_WHOISACCOUNT='330',
         RPL_QUIETLIST='728',
@@ -25,46 +25,36 @@ _add_numerics()
 
 
 @attr.s
-class Channel:
-    name: str = attr.ib()
-    # nick -> User
-    _members: MutableMapping[str, User] = attr.ib(factory=dict)
-    # TODO: Maybe add modes? Bans?
-
-    _log = logger.Logger()
-
-    def userJoined(self, user: User):
-        if user.nickname in self._members:
-            self._log.warn(f'User {user!r} already in channel {self.name}')
-        self.members[user.nickname] = user
-
-    def userLeft(self, user: Union[User, str]):
-        nick = user if isinstance(user, str) else user.nickname
-        if nick not in self._members:
-            self._log.warn(f'User {user!r} not in channel {self.name}')
-            return
-        del self._members[nick]
-
-
-@attr.s
 class ChannelCollection:
-    _channels: MutableMapping[str, Channel] = attr.ib(factory=dict)
+    # channel name -> users
+    _channels: MutableMapping[str, MutableSet[str]] = attr.ib(factory=dict)
 
     _log = logger.Logger()
 
-    def joined(self, channelName: str):
-        if channelName in self._channels:
-            self._log.warn('Channel {channelName!r} already registered')
-            return
-        c = Channel(channelName)
-        self._channels[c.name] = c
+    def add(self, channelName: str) -> None:
+        assert channelName not in self._channels, \
+            f'channel {channelName} already exists'
+        self._channels[channelName] = set()
 
+    def remove(self, channelName: str) -> None:
+        del self._channels[channelName]
 
-@attr.s
-class User:
-    nickname: str = attr.ib()
-    username: str = attr.ib()
-    hostname: str = attr.ib()
+    def userJoined(self, nickname: str, channelName: str) -> None:
+        channel = self._channels[channelName]
+        assert nickname not in channel, \
+            f'{nickname} already in {channelName}'
+        channel.add(nickname)
+
+    def userLeft(self, nickname: str, channelName: str) -> None:
+        self._channels[channelName].remove(nickname)
+
+    def userQuit(self, nickname) -> None:
+        found = False
+        for members in self._channels.values():
+            if nickname in members:
+                found = True
+                members.remove(nickname)
+        assert found, f'{nickname} not found in any channels'
 
 
 class _ActionsWrangler:
@@ -84,6 +74,12 @@ class _ActionsWrangler:
         if dfd is None:
             raise ValueError(f'No {self.name} in flight for {key!r}')
         dfd.callback(key)
+
+    def error(self, key: str, err: Exception) -> None:
+        dfd = self._inflight.pop(key, None)
+        if dfd is None:
+            raise ValueError(f'No {self.name} in flight for {key!r}')
+        dfd.errback(err)
 
     def __repr__(self):
         return (
@@ -126,6 +122,30 @@ class _IRCClientState:
     channels: ChannelCollection = attr.ib(factory=ChannelCollection)
 
 
+class FailedToJoin(Exception):
+    pass
+
+
+def _joinErrorMethod(
+    errorName: str
+) -> Callable[[_ComposedIRCClient, str, Sequence[str]], None]:
+    assert errorName.upper() == errorName and errorName.startswith('ERR_')
+    methodName = f'irc_{errorName}'
+
+    def method(self, prefix: str, params: Sequence[str]) -> None:
+        channel, *rest = params
+        self._log.warn(
+            'Failed to join {channel!r}: {code} {params}',
+            channel=channel, code=errorName, params=rest,
+        )
+        err = FailedToJoin(errorName, channel, rest)
+        self.state.actions.myJoins.error(channel, err)
+
+    method.__name__ == methodName
+    # TODO: Uh, what about __qualname__?
+    return method
+
+
 class _ComposedIRCClient(irc.IRCClient):
     """
     Goal: provide separations of concerns by dispatching events to
@@ -140,16 +160,61 @@ class _ComposedIRCClient(irc.IRCClient):
         self.state = _IRCClientState()
         self.signOnComplete = defer.Deferred()
 
-    def signedOn(self):
+    def signedOn(self) -> None:
         self.signOnComplete.callback(None)
 
     def joined(self, channel: str) -> None:
-        self._log.info('Joined channel {channel!r}', channel=channel)
-        self.state.channels.joined(channel)
+        self._log.info('Joined channel {channel}', channel=channel)
+        self.state.channels.add(channel)
         self.state.actions.myJoins.complete(channel)
 
+    def left(self, channel: str) -> None:
+        self._log.info('I left {channel}', channel=channel)
+        self.state.channels.remove(channel)
+
+    def kickedFrom(self, channel: str, kicker: str, message: str) -> None:
+        self._log.info(
+            'I was kicked from {channel} by {kicker}: {message}',
+            channel=channel, kicker=kicker, message=message,
+        )
+        self.state.channels.remove(channel)
+
+    #def userJoined(self, user: str, channel: str) -> None:
+    #def userLeft(self, user: str, channel: str) -> None:
+    #def userQuit(self, user: str, message: str) -> None:
+    #def userKicked(
+    #    self, kickee: str, channel: str, kicker: str, message: str
+    #) -> None:
+    #def userRenamed(self, oldname: str, newname: str) -> None:
+
+    ### Low-level protocol events
     def irc_unknown(self, command, prefix, params):
         self._log.warn(
             "received command we aren't prepared to handle: {cmd} {pfx} {pms}",
             cmd=command, pfx=prefix, pms=params,
         )
+
+    ### JOIN replies:
+    # The server itself replies with a JOIN, this is handled by twisted:
+    # it calls either `joined` or `userJoined`, depending.
+    # RPL_TOPIC is handled by twisted: it calls `topicUpdated`.
+
+    # These error replies aren't sent for anything but JOIN:
+    irc_ERR_BADCHANNELKEY = _joinErrorMethod('ERR_BADCHANNELKEY')
+    irc_ERR_BANNEDFROMCHAN = _joinErrorMethod('ERR_BANNEDFROMCHAN')
+    irc_ERR_CHANNELISFULL = _joinErrorMethod('ERR_CHANNELISFULL')
+    irc_ERR_INVITEONLYCHAN = _joinErrorMethod('ERR_INVITEONLYCHAN')
+    irc_ERR_TOOMANYCHANNELS = _joinErrorMethod('ERR_TOOMANYCHANNELS')
+
+    # XXX: Maybe try to handle these more ambiguous ones?
+    # There doesn't appear to be a nice way to correlate one to its cause,
+    # without some IRCv3 stuff, but we really shouldn't receive any of them
+    # unless we do something wrong. If we store recently-sent commands, we
+    # could maybe guess a little easier, but it's almost certainly not worth
+    # the effort.
+    # ERR_BADCHANMASK - to: JOIN or KICK
+    # ERR_NOSUCHCHANNEL - to: JOIN, PART, or KICK
+    # ERR_TOOMANYTARGETS - to: JOIN or PRIVMSG
+    # ERR_UNAVAILRESOURCE - to: JOIN or NICK
+    # XXX: This one could just be fatal, maybe.
+    # ERR_NEEDMOREPARAMS - to: numerous commands
