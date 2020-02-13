@@ -21,7 +21,28 @@ class IRCCredentials:
 # make the dockerized ircd and services match.
 INFOTEST = IRCCredentials('infotest', 'infotestpass')
 MONITOR = IRCCredentials('monitor', 'monitorpass')
-
+GENERICS = tuple(IRCCredentials(*cred) for cred in [
+    ('agonzales', 'agonzalespass'),
+    ('amcdowell', 'amcdowellpass'),
+    ('bbutler', 'bbutlerpass'),
+    ('cody67', 'cody67pass'),
+    ('daniel18', 'daniel18pass'),
+    ('imcdaniel', 'imcdanielpass'),
+    ('james74', 'james74pass'),
+    ('kevin69', 'kevin69pass'),
+    ('marissa05', 'marissa05pass'),
+    ('mary19', 'mary19pass'),
+    ('michael81', 'michael81pass'),
+    ('paul51', 'paul51pass'),
+    ('paula67', 'paula67pass'),
+    ('pward', 'pwardpass'),
+    ('rmiller', 'rmillerpass'),
+    ('tateroger', 'taterogerpass'),
+    ('tinasmith', 'tinasmithpass'),
+    ('tking', 'tkingpass'),
+    ('wendybell', 'wendybellpass'),
+    ('zchase', 'zchasepass')
+])
 
 def _passthrough(o: str) -> str:
     return o

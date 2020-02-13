@@ -22,6 +22,7 @@ from config import (
     WEBUI_PORT,
     INFOTEST,
     MONITOR,
+    GENERICS,
     IRCD_HOST,
     IRCD_PORT,
     SERVICES_XMLRPC_URL,
@@ -46,7 +47,7 @@ def fixture_registrations():
         connectTimeout=5.0,
         reactor=reactor,
     )
-    users = [INFOTEST, MONITOR]
+    users = [INFOTEST, MONITOR, *GENERICS]
     dfd = defer.succeed(None)
     for creds in users:
         dfd.addCallback(
