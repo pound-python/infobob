@@ -74,3 +74,33 @@ IRCD_PORT = _maybeEnv('IRCD_PORT', 6667, int)
 SERVICES_XMLRPC_URL = _maybeEnv(
     'SERVICES_XMLRPC_URL', 'http://localhost:8080/xmlrpc'
 )
+
+
+def buildConfig(channelsconf, autojoin, dbpath=None):
+    conf = {
+        'irc': {
+            'server': IRCD_HOST,
+            'port': IRCD_PORT,
+            'ssl': False,
+            'nickname': INFOTEST.nickname,
+            'password': INFOTEST.password,
+            'nickserv_pw': None,
+            'autojoin': autojoin,
+        },
+        'channels': {
+            'defaults': {
+                'commands': [
+                    ['allow', 'all'],
+                ],
+            },
+            **channelsconf,
+        },
+        'web': {
+            'port': WEBUI_PORT,
+            'url': f'http://localhost:{WEBUI_PORT}',
+        },
+        'misc': {'manhole': {'socket': None}},
+    }
+    if dbpath:
+        conf['database'] = {'sqlite': {'db_file': str(dbpath)}}
+    return conf

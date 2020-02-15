@@ -115,6 +115,9 @@ class ComposedIRCController:
         self._proto.join(channelName)
         return self._actions.myJoins.begin(channelName)
 
+    def say(self, channelName: str, message: str):
+        self._proto.say(channelName, message)
+
 
 @attr.s
 class _IRCClientState:
