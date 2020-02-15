@@ -76,7 +76,7 @@ to start from a clean slate, change the things you need, and update the file:
     registering a bunch of users fairly easy:
 
         /eval nick flubber; \
-            msg nickserv register flubber flubber@infobobtest.local; \
+            msg nickserv register flubberpass flubber@infobobtest.local; \
             msg nickserv logout
 
 5.  Since atheme only writes its db every 5 minutes, you'll need to make sure
@@ -103,3 +103,20 @@ to start from a clean slate, change the things you need, and update the file:
 
 8.  Finally, repeat steps 2 and 3, then double check that the changes persist
     and the tests pass. You're ready to commit!
+
+
+
+Test cases to implement
+-----------------------
+
+Redent command
+
+Repaste feature
+
+Existing bans are stored and visible in web UI
+
+Display bans in web UI
+
+Flip mask ban to account ban
+
+Unban after expiration
