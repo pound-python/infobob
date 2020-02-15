@@ -19,9 +19,6 @@ from infobob import database, http, util
 from infobob.pastebin import make_paster, make_repaster
 
 
-log = logger.Logger()
-
-
 numeric_addendum = dict(
     RPL_WHOISACCOUNT='330',
     RPL_QUIETLIST='728',
@@ -51,6 +48,7 @@ class Infobob(irc.IRCClient):
     versionEnv = 'twisted'
 
     db = dbpool = manhole_service = None
+    log = logger.Logger()
 
     def __init__(self, conf, paster=None, repaster=None):
         self._conf = conf
@@ -84,7 +82,7 @@ class Infobob(irc.IRCClient):
         def wrap():
             d = defer.maybeDeferred(method, *a, **kw)
             d.addErrback(
-                lambda f: log.failure(
+                lambda f: self.log.failure(
                     u'error in looper {name}',
                     f,
                     name=name,
@@ -150,6 +148,12 @@ class Infobob(irc.IRCClient):
             defer.returnValue(ret)
         finally:
             self._whois_queue.release()
+
+    def irc_unknown(self, command, prefix, params):
+        self.log.warn(
+            u"received command we aren't prepared to handle: {cmd} {pfx} {pms}",
+            cmd=command, pfx=prefix, pms=params,
+        )
 
     def irc_RPL_WHOISUSER(self, prefix, params):
         c = self._whois_collation
@@ -296,7 +300,7 @@ class Infobob(irc.IRCClient):
             if d is not None:
                 d.callback(message)
                 return
-            log.info(
+            self.log.info(
                 u'privmsg from {user}: {message}', user=user, message=message
             )
             target = user
