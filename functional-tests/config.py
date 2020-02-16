@@ -9,16 +9,18 @@ HERE = pathlib.Path(__name__).parent.resolve()
 
 SCHEMA_PATH = HERE.parent.joinpath('db.schema')
 
-
 @attr.s
 class IRCCredentials:
     nickname: str = attr.ib()
     password: str = attr.ib()
 
-
-# Static credentials, representing nickserv-registered accounts.
 # Don't change these unless you're prepared to do a lot of work to
 # make the dockerized ircd and services match.
+# Registered channels:
+PROJECT_CHAN = '#project'
+OFFTOPIC_CHAN = '##offtopic'
+ALL_CHANS = (PROJECT_CHAN, OFFTOPIC_CHAN)
+# Static credentials for nickserv-registered accounts:
 INFOTEST = IRCCredentials('infotest', 'infotestpass')
 MONITOR = IRCCredentials('monitor', 'monitorpass')
 CHANOP = IRCCredentials('chanop', 'chanoppass')
@@ -44,6 +46,8 @@ GENERICS = tuple(IRCCredentials(*cred) for cred in [
     ('wendybell', 'wendybellpass'),
     ('zchase', 'zchasepass')
 ])
+ALL_USERS = (INFOTEST, MONITOR, CHANOP, *GENERICS)
+
 
 def _passthrough(o: str) -> str:
     return o
