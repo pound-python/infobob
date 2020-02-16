@@ -169,13 +169,20 @@ def _joinErrorMethod(
     return method
 
 
+def _prefixNicknameThenForward(event):
+    # XXX: Ugly. I think.
+    log_format = '(nick:{log_source.nickname}) ' + event['log_format']
+    tweaked = {**event, 'log_format': log_format}
+    logger.globalLogPublisher(tweaked)
+
+
 class _ComposedIRCClient(irc.IRCClient):
     """
     Goal: provide separations of concerns by dispatching events to
     other objects, instead of stuffing even more in the already-bloated
     IRCClient.
     """
-    _log = logger.Logger()
+    _log = logger.Logger(observer=_prefixNicknameThenForward)
 
     def __init__(self, nickname: str, password: str):
         self.nickname = nickname
@@ -187,7 +194,7 @@ class _ComposedIRCClient(irc.IRCClient):
         self.signOnComplete.callback(None)
 
     def joined(self, channel: str) -> None:
-        self._log.info('Joined channel {channel}', channel=channel)
+        self._log.info('I joined channel {channel}', channel=channel)
         self.state.channels.add(channel)
         self.state.actions.myJoins.complete(channel)
 
