@@ -28,13 +28,22 @@ Run the ircd and services in another terminal:
 
 Wait for them to come up: atheme will output something like
 `m_pong(): finished synching with uplink (465 ms)`.
-If you want to poke around, point your IRC client at localhost:6667
-(plaintext). The superadmin is `god`, password `letmein` (for both
-NickServ and full IRCops).
 
 Then run the tests:
 
     tests-env/bin/pytest
+
+If you want to poke around, point your IRC client at localhost:6667
+(plaintext). The superadmin is `god`, password `letmein` (for both
+NickServ and full IRCops).
+
+There's a `simulate.py` script you can use to run infobob with a fresh db,
+along with a few chatty bots. The script takes a single optional argument,
+a filename containing phrases to use.
+
+You can use the `movie_lines.py` script to generate a better phrases file,
+e.g. `./movie_lines.py lines -n m13` if you're a fan of "Airplane!". Don't
+forget to initialize with `./movie_lines.py initdb` first.
 
 
 Updating the initial services database

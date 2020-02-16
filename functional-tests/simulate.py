@@ -1,18 +1,19 @@
+#!/usr/bin/env python3
 import os
 import json
 import pathlib
 import tempfile
 import time
 import sys
-import functools
 import random
-from typing import Sequence, Tuple
+import argparse
+from functools import partial
+from typing import Sequence
 
 from twisted.internet import defer
 from twisted.internet import task
 from twisted.internet import endpoints
 from twisted.internet.error import ProcessDone
-from twisted.web import xmlrpc
 from twisted import logger
 import attr
 
@@ -35,12 +36,10 @@ import runner
 LOG = logger.Logger()
 
 
-def main(reactor, infobob_working_dir: pathlib.Path):
+def main(reactor, infobob_working_dir: pathlib.Path, phrases: Sequence[str]):
     observers = [logger.textFileLogObserver(sys.stderr)]
     logger.globalLogBeginner.beginLoggingTo(
         observers, redirectStandardIO=False)
-    with open('phrases.txt') as fp:
-        phrases = [line.strip() for line in fp]
     conf = buildConfig(
         channelsconf={
             '#project': {'have_ops': True},
@@ -59,7 +58,7 @@ def main(reactor, infobob_working_dir: pathlib.Path):
         reactor, IRCD_HOST, IRCD_PORT, timeout=5)
     creds = [MONITOR, *GENERICS[:10]]
     taskRunners = [
-        functools.partial(
+        partial(
             runChatter, endpoint, reactor,
             cred.nickname, cred.password,
             '##offtopic', phrases,
@@ -124,6 +123,20 @@ def chat(controller: clients.ComposedIRCController, reactor, channel, phrases):
 
 
 if __name__ == '__main__':
+    args = sys.argv[1:]
+    if args:
+        with open(args[0]) as fp:
+            phrases = [line.strip() for line in fp]
+    else:
+        phrases = [
+            "You're using coconuts!",
+            "Where did you get the coconuts?",
+            "Found them?  In Mercea.  The coconut's tropical!",
+            "This new learning amazes me, Sir Bedevere.",
+            "Explain again how sheep's bladders may be employed "
+                "to prevent earthquakes.",
+            "Oh, let me go and have a bit of peril?",
+        ]
     with tempfile.TemporaryDirectory() as tdir:
         infobob_working_dir = pathlib.Path(tdir)
-        task.react(main, (infobob_working_dir,))
+        task.react(main, (infobob_working_dir, phrases))
