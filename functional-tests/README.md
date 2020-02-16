@@ -11,7 +11,14 @@ Requirements:
 -   Python 3.6+ for the tests
 -   Python 2.7 and virtualenv for infobob itself
 
-Setup:
+The `features/` directory has some [Gherkin](https://cucumber.io/docs/gherkin/)
+feature files. I don't intend to make these actually executable; they're
+primarily intended as documentation for what Infobob should do, and to assist
+in planning test cases.
+
+
+Setup and Running
+-----------------
 
     # tests env
     python3 -m venv tests-env
@@ -32,6 +39,10 @@ Wait for them to come up: atheme will output something like
 Then run the tests:
 
     tests-env/bin/pytest
+
+
+Other Goodies
+-------------
 
 If you want to poke around, point your IRC client at localhost:6667
 (plaintext). The superadmin is `god`, password `letmein` (for both
@@ -113,20 +124,3 @@ to start from a clean slate, change the things you need, and update the file:
 
 8.  Finally, repeat steps 2 and 3, then double check that the changes persist
     and the tests pass. You're ready to commit!
-
-
-
-Test cases to implement
------------------------
-
-Redent command
-
-Repaste feature
-
-Existing bans are stored and visible in web UI
-
-Display bans in web UI
-
-Flip mask ban to account ban
-
-Unban after expiration
