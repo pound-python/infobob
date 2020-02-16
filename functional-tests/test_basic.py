@@ -123,12 +123,9 @@ def test_infobob_basic(start_infobob):
     # This part could be used to test ComposedIRCController and friends...
     endpoint = endpoints.TCP4ClientEndpoint(
         reactor, IRCD_HOST, IRCD_PORT, timeout=5)
-    monitor = yield clients.ComposedIRCController.connect(
-        endpoint, MONITOR.nickname, MONITOR.password)
-    yield defer.gatherResults([
-        monitor.joinChannel('#project'),
-        monitor.joinChannel('##offtopic'),
-    ])
+    monitor = yield clients.joinFakeUser(
+        endpoint, MONITOR.nickname, MONITOR.password,
+        autojoin=['#project', '##offtopic'])
     assert '#project' in monitor._proto.state.channels._channels
     assert '##offtopic' in monitor._proto.state.channels._channels
 

@@ -87,25 +87,9 @@ def run(reactor, *, bot, taskRunners):
 
 
 def runChatter(endpoint, reactor, nickname, password, channel, phrases):
-    dfd = joinFakeUser(endpoint, nickname, password, [channel])
+    dfd = clients.joinFakeUser(endpoint, nickname, password, [channel])
     dfd.addCallback(chat, reactor, channel, phrases)
     return dfd
-
-
-@defer.inlineCallbacks
-def joinFakeUser(
-    endpoint,
-    nickname: str,
-    password: str,
-    autojoin: Sequence[str] = (),
-) -> clients.ComposedIRCController:
-    controller = yield clients.ComposedIRCController.connect(
-        endpoint, nickname, password)
-    if autojoin:
-        yield defer.gatherResults([
-            controller.joinChannel(chan) for chan in autojoin
-        ])
-    return controller
 
 
 @defer.inlineCallbacks

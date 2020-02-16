@@ -24,6 +24,22 @@ def _add_numerics() -> None:
 _add_numerics()
 
 
+@defer.inlineCallbacks
+def joinFakeUser(
+    endpoint,
+    nickname: str,
+    password: str,
+    autojoin: Sequence[str] = (),
+) -> ComposedIRCController:
+    controller = yield ComposedIRCController.connect(
+        endpoint, nickname, password)
+    if autojoin:
+        yield defer.gatherResults([
+            controller.joinChannel(chan) for chan in autojoin
+        ])
+    return controller
+
+
 @attr.s
 class ChannelCollection:
     # channel name -> users
