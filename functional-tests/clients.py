@@ -16,6 +16,10 @@ def _add_numerics() -> None:
         RPL_WHOISACCOUNT='330',
         RPL_QUIETLIST='728',
         RPL_ENDOFQUIETLIST='729',
+        # 250 is "reserved": https://tools.ietf.org/html/rfc2812#section-5.3
+        RPL_STATSDLINE='250',
+        RPL_LOCALUSERS='265',  # aka RPL_CURRENT_LOCAL
+        RPL_GLOBALUSERS='266',  # aka RPL_CURRENT_GLOBAL
     )
     for name, numeric in numeric_addendum.items():
         irc.numeric_to_symbolic[numeric] = name
@@ -207,11 +211,16 @@ class _ComposedIRCClient(irc.IRCClient):
     #def userRenamed(self, oldname: str, newname: str) -> None:
 
     ### Low-level protocol events
-    def irc_unknown(self, command, prefix, params):
+    def irc_unknown(self, prefix, command, params):
         self._log.warn(
-            "received command we aren't prepared to handle: {cmd} {pfx} {pms}",
+            "received command we aren't prepared to handle: "
+                "{pfx} {cmd} {pms}",
             cmd=command, pfx=prefix, pms=params,
         )
+
+    def lineReceived(self, line):
+        self._log.debug('lineReceived({line!r})', line=line)
+        super().lineReceived(line)
 
     ### JOIN replies:
     # The server itself replies with a JOIN, this is handled by twisted:
@@ -225,6 +234,18 @@ class _ComposedIRCClient(irc.IRCClient):
     irc_ERR_INVITEONLYCHAN = _joinErrorMethod('ERR_INVITEONLYCHAN')
     irc_ERR_TOOMANYCHANNELS = _joinErrorMethod('ERR_TOOMANYCHANNELS')
 
+    ### NAMES
+    # Ignore until otherwise necessary to handle, to avoid noisy logging
+    # from `irc_unknown`.
+    def irc_RPL_NAMREPLY(self, prefix, params): pass
+    def irc_RPL_ENDOFNAMES(self, prefix, params): pass
+
+    ### Ignore generic info replies
+    def irc_RPL_LUSERUNKNOWN(self, prefix, params): pass
+    def irc_RPL_STATSDLINE(self, prefix, params): pass
+    def irc_RPL_LOCALUSERS(self, prefix, params): pass
+    def irc_RPL_GLOBALUSERS(self, prefix, params): pass
+
     # XXX: Maybe try to handle these more ambiguous ones?
     # There doesn't appear to be a nice way to correlate one to its cause,
     # without some IRCv3 stuff, but we really shouldn't receive any of them
@@ -235,5 +256,7 @@ class _ComposedIRCClient(irc.IRCClient):
     # ERR_NOSUCHCHANNEL - to: JOIN, PART, or KICK
     # ERR_TOOMANYTARGETS - to: JOIN or PRIVMSG
     # ERR_UNAVAILRESOURCE - to: JOIN or NICK
-    # XXX: This one could just be fatal, maybe.
+    # ERR_TOOMANYMATCHES - to: NAMES or LIST
+    # XXX: These could just be fatal, maybe.
     # ERR_NEEDMOREPARAMS - to: numerous commands
+    # ERR_NOSUCHSERVER - to: numerous commands

@@ -36,7 +36,11 @@ def fixture_start_logging():
     """
     Start up twisted.logger machinery.
     """
-    observers = [logger.textFileLogObserver(sys.stderr)]
+    stderrObserver = logger.textFileLogObserver(sys.stderr)
+    levelPredicate = logger.LogLevelFilterPredicate(
+        defaultLogLevel=logger.LogLevel.info)
+    filterer = logger.FilteringLogObserver(stderrObserver, [levelPredicate])
+    observers = [filterer]
     logger.globalLogBeginner.beginLoggingTo(
         observers, redirectStandardIO=False)
 

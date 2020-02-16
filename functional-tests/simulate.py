@@ -37,7 +37,11 @@ LOG = logger.Logger()
 
 
 def main(reactor, infobob_working_dir: pathlib.Path, phrases: Sequence[str]):
-    observers = [logger.textFileLogObserver(sys.stderr)]
+    stderrObserver = logger.textFileLogObserver(sys.stderr)
+    levelPredicate = logger.LogLevelFilterPredicate(
+        defaultLogLevel=logger.LogLevel.info)
+    filterer = logger.FilteringLogObserver(stderrObserver, [levelPredicate])
+    observers = [filterer]
     logger.globalLogBeginner.beginLoggingTo(
         observers, redirectStandardIO=False)
     conf = buildConfig(
