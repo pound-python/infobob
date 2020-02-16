@@ -11,7 +11,6 @@ from twisted.internet import protocol
 from twisted.internet import defer
 from twisted.internet import task
 from twisted.internet import endpoints
-from twisted.internet.error import ProcessDone
 from twisted.web import xmlrpc
 from twisted import logger
 
@@ -21,6 +20,7 @@ from config import (
     WEBUI_PORT,
     INFOTEST,
     MONITOR,
+    CHANOP,
     GENERICS,
     IRCD_HOST,
     IRCD_PORT,
@@ -49,7 +49,7 @@ def fixture_registrations():
         connectTimeout=5.0,
         reactor=reactor,
     )
-    users = [INFOTEST, MONITOR, *GENERICS]
+    users = [INFOTEST, MONITOR, CHANOP, *GENERICS]
     dfd = defer.succeed(None)
     for creds in users:
         dfd.addCallback(

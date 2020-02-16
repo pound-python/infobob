@@ -169,7 +169,7 @@ MDEP groupserv/set_public
 MDEP groupserv/set_url 
 MDEP misc/httpd 
 MDEP transport/xmlrpc 
-LUID AAAAAAAAX 
+LUID AAAAAAAAY 
 CF +AFORVbefiorstv 
 MU AAAAAAAAX agonzales $1$xulglh$ZomoaxN/IXItJyKWHlFUN. agonzales@infobobtest.local 1581630951 1581630951 +sCb default 
 MDU agonzales private:host:actual ~someone@172.18.0.1
@@ -183,6 +183,10 @@ MU AAAAAAAAU bbutler $1$ssrdqe$VLWh4DVTFnxQtCBLuidUg0 bbutler@infobobtest.local 
 MDU bbutler private:host:actual ~someone@172.18.0.1
 MDU bbutler private:host:vhost ~someone@172.18.0.1
 MN bbutler bbutler 1581630896 1581630896 
+MU AAAAAAAAY chanop $1$hlervy$NbunLpWKM6cPqhPq96OB8/ chanop@infobobtest.local 1581852053 1581852262 +sCb default 
+MDU chanop private:host:actual ~someone@172.19.0.1
+MDU chanop private:host:vhost ~someone@172.19.0.1
+MN chanop chanop 1581852053 1581852262 
 MU AAAAAAAAN cody67 $1$pdgdml$HMMNcYsOE9emvhbg/eCvX0 cody67@infobobtest.local 1581630816 1581630816 +sCb default 
 MDU cody67 private:host:actual ~someone@172.18.0.1
 MDU cody67 private:host:vhost ~someone@172.18.0.1
@@ -191,10 +195,10 @@ MU AAAAAAAAM daniel18 $1$jckynz$kPYeHIhdizJ/d/qGAuhlZ0 daniel18@infobobtest.loca
 MDU daniel18 private:host:actual ~someone@172.18.0.1
 MDU daniel18 private:host:vhost ~someone@172.18.0.1
 MN daniel18 daniel18 1581630778 1581630778 
-MU AAAAAAAAB god $1$twenok$w.GFjS5sd8Dwzy80Rvbao0 god@infobobtest.local 1581288499 1581631698 +sC default 
-MDU god private:host:actual ~someone@172.18.0.1
-MDU god private:host:vhost ~someone@172.18.0.1
-MN god god 1581288499 1581630967 
+MU AAAAAAAAB god $1$twenok$w.GFjS5sd8Dwzy80Rvbao0 god@infobobtest.local 1581288499 1581852223 +sC default 
+MDU god private:host:actual ~someone@172.19.0.1
+MDU god private:host:vhost ~someone@172.19.0.1
+MN god god 1581288499 1581852223 
 MU AAAAAAAAP imcdaniel $1$peyits$XaMHLYcBoabN/b2gBY321. imcdaniel@infobobtest.local 1581630826 1581630826 +sCb default 
 MDU imcdaniel private:host:actual ~someone@172.18.0.1
 MDU imcdaniel private:host:vhost ~someone@172.18.0.1
@@ -268,13 +272,15 @@ GFA +fscmviA
 MC ##offtopic 1581450607 1581631609 + 272 6 0  
 CA ##offtopic god +AFORfiorstv 1581450607 god 
 CA ##offtopic infotest +Aeiortv 1581451119 god 
+CA ##offtopic chanop +Aeiortv 1581852188 god 
 MDC ##offtopic disable_fantasy on
 MDC ##offtopic private:channelts 1581631604
-MC #project 1581450377 1581631609 + 8192 0 0  
+MC #project 1581450377 1581852242 + 8192 0 0  
 CA #project god +AFORfiorstv 1581450377 god 
 CA #project infotest +Aeiortv 1581451092 god 
+CA #project chanop +Aeiortv 1581852180 god 
 MDC #project disable_fantasy on
-MDC #project private:channelts 1581631604
+MDC #project private:channelts 1581852242
 KID 0 
 XID 0 
 QID 0 

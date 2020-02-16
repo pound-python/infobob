@@ -2,4 +2,5 @@
 # diffs could still be interesting, so leave that set,
 # but don't let it play with line endings, or try to
 # merge two versions of it.
-initial.db diff -text -merge
+# Also ignore whitespace errors.
+initial.db diff -text -merge -whitespace

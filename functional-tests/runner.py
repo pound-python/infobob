@@ -6,6 +6,7 @@ from typing import Sequence, Tuple
 
 from twisted.internet import defer
 from twisted.internet import protocol
+from twisted.internet.error import ProcessDone
 from twisted import logger
 import attr
 

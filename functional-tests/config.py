@@ -21,6 +21,7 @@ class IRCCredentials:
 # make the dockerized ircd and services match.
 INFOTEST = IRCCredentials('infotest', 'infotestpass')
 MONITOR = IRCCredentials('monitor', 'monitorpass')
+CHANOP = IRCCredentials('chanop', 'chanoppass')
 GENERICS = tuple(IRCCredentials(*cred) for cred in [
     ('agonzales', 'agonzalespass'),
     ('amcdowell', 'amcdowellpass'),

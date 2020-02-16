@@ -97,6 +97,7 @@ to start from a clean slate, change the things you need, and update the file:
 6.  Stop docker-compose, then grab the DB:
 
         docker run \
+            --rm \
             --mount type=volume,source=infobob-functests_atheme-db,dst=/athemedb,readonly \
             debian:buster \
             cat /athemedb/services.db \
