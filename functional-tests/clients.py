@@ -131,6 +131,10 @@ class ComposedIRCController:
         yield proto.signOnComplete
         return cls(proto=proto, actions=proto.state.actions)
 
+    def disconnect(self) -> defer.Deferred:
+        self._proto.transport.loseConnection()
+        return self._proto.disconnected
+
     def joinChannel(self, channelName: str) -> defer.Deferred:
         self._proto.join(channelName)
         return self._actions.myJoins.begin(channelName)
@@ -189,9 +193,16 @@ class _ComposedIRCClient(irc.IRCClient):
         self.password = password
         self.state = _IRCClientState()
         self.signOnComplete = defer.Deferred()
+        self.disconnected = defer.Deferred()
 
     def signedOn(self) -> None:
         self.signOnComplete.callback(None)
+
+    def connectionLost(self, reason):
+        try:
+            super().connectionLost(reason)
+        finally:
+            self.disconnected.callback(None)
 
     def joined(self, channel: str) -> None:
         self._log.info('I joined channel {channel}', channel=channel)

@@ -2,6 +2,8 @@ import sys
 
 import pytest
 import pytest_twisted as pytest_tw
+from twisted.internet import endpoints
+from twisted.internet import defer
 from twisted import logger
 
 from config import (
@@ -9,6 +11,8 @@ from config import (
     buildConfig,
     IRCD_HOST,
     IRCD_PORT,
+    MONITOR,
+    ALL_CHANS,
 )
 import clients
 from runner import InfobobRunner
@@ -35,7 +39,7 @@ def fixture_start_infobob(tmp_path):
     spawned = None
     fixlog = logger.Logger(namespace=f'{__name__}.fixture_start_infobob')
 
-    def start_infobob(channelsconf, autojoin):
+    def start_infobob(channelsconf, autojoin) -> defer.Deferred:
         nonlocal called
         nonlocal spawned
         if called:
@@ -50,7 +54,19 @@ def fixture_start_infobob(tmp_path):
             conf=conf,
         )
         from twisted.internet import reactor
-        spawned = bot.spawn(reactor)
+
+        running = defer.Deferred()
+
+        def cbNotifyTest(value):
+            reactor.callLater(0, running.callback, None)
+            return value
+
+        def ebNotifyTest(failure):
+            reactor.callLater(0, running.errback, failure)
+            return failure
+
+        spawned = bot.spawn(reactor).addCallbacks(cbNotifyTest, ebNotifyTest)
+        return running
 
     yield start_infobob
 
@@ -67,3 +83,23 @@ def fixture_start_infobob(tmp_path):
         return pytest_tw.blockon(
             spawned.addCallback(cbStop).addErrback(ebLogAndRaise)
         )
+
+
+@pytest.fixture(name='ircd_endpoint')
+def fixture_ircd_endpoint():
+    from twisted.internet import reactor
+
+    ircd_endpoint = endpoints.TCP4ClientEndpoint(
+        reactor, IRCD_HOST, IRCD_PORT, timeout=5)
+    return ircd_endpoint
+
+
+@pytest_tw.async_yield_fixture(name='monitor')
+async def fixture_monitor(ircd_endpoint):
+    monitor = await clients.joinFakeUser(
+        ircd_endpoint,
+        MONITOR.nickname,
+        MONITOR.password,
+        autojoin=ALL_CHANS)
+    yield monitor
+    await monitor.disconnect()
