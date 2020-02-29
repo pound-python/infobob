@@ -1,11 +1,25 @@
 from __future__ import annotations
-from typing import MutableMapping, MutableSet, Callable, Sequence, Awaitable
+import datetime
+import collections
+import contextlib
+from typing import (
+    Awaitable,
+    Callable,
+    Deque,
+    MutableMapping,
+    MutableSet,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from twisted.words.protocols import irc
 from twisted.internet import endpoints
 from twisted.internet import defer
 from twisted import logger
 import attr
+
+import utils
 
 
 async def joinFakeUser(
@@ -17,6 +31,8 @@ async def joinFakeUser(
     controller = await ComposedIRCController.connect(
         endpoint, nickname, password)
     if autojoin:
+        # NickServ might not have had time to give us +i, give it a moment.
+        await utils.sleep(0.5)
         await defer.gatherResults([
             controller.joinChannel(chan) for chan in autojoin
         ])
@@ -33,19 +49,33 @@ class ComposedIRCController:
 
     @classmethod
     @defer.inlineCallbacks
-    def connect(cls, endpoint, nickname: str, password: str) -> defer.Deferred:
+    def connect(
+        cls,
+        endpoint,
+        nickname: str,
+        password: str,
+        signOnTimeout: int = 1,
+    ) -> defer.Deferred:
+        from twisted.internet import reactor
         proto = yield endpoints.connectProtocol(
-            endpoint, _ComposedIRCClient(nickname, password))
-        yield proto.signOnComplete
-        return cls(proto=proto, actions=proto.state.actions)
+            endpoint, _ComposedIRCClient(nickname, password)
+        ).addTimeout(signOnTimeout, reactor)
+        ctrl = cls(proto=proto, actions=proto.state.actions)
+        yield proto.signOnComplete.addTimeout(signOnTimeout, reactor)
+        return ctrl
 
     def disconnect(self) -> defer.Deferred:
         self._proto.transport.loseConnection()
         return self._proto.disconnected
 
-    def joinChannel(self, channelName: str) -> defer.Deferred:
+    def getChannelState(self, channelName: str) -> ChannelState:
+        return self._proto.state.channels.get(channelName)
+
+    def joinChannel(self, channelName: str, timeout: int= 1) -> defer.Deferred:
+        from twisted.internet import reactor
         self._proto.join(channelName)
-        return self._actions.myJoins.begin(channelName)
+        dfd = self._actions.myJoins.begin(channelName)
+        return dfd.addTimeout(timeout, reactor)
 
     def say(self, channelName: str, message: str):
         self._proto.say(channelName, message)
@@ -53,35 +83,111 @@ class ComposedIRCController:
 
 @attr.s
 class _ChannelCollection:
-    # channel name -> users
-    _channels: MutableMapping[str, MutableSet[str]] = attr.ib(factory=dict)
+    _channels: MutableMapping[str, ChannelState] = attr.ib(factory=dict)
 
     _log = logger.Logger()
 
     def add(self, channelName: str) -> None:
         assert channelName not in self._channels, \
             f'channel {channelName} already exists'
-        self._channels[channelName] = set()
+        self._channels[channelName] = ChannelState(name=channelName)
 
     def remove(self, channelName: str) -> None:
         del self._channels[channelName]
 
-    def userJoined(self, nickname: str, channelName: str) -> None:
-        channel = self._channels[channelName]
-        assert nickname not in channel, \
-            f'{nickname} already in {channelName}'
-        channel.add(nickname)
+    def get(self, channelName: str) -> ChannelState:
+        return self._channels[channelName]
 
-    def userLeft(self, nickname: str, channelName: str) -> None:
-        self._channels[channelName].remove(nickname)
+    def userRenamed(self, oldnick: str, newnick: str) -> None:
+        for chan in self._channelsWithUser(oldnick):
+            chan.removeNick(oldnick)
+            chan.addNick(newnick)
 
-    def userQuit(self, nickname) -> None:
-        found = False
-        for members in self._channels.values():
-            if nickname in members:
-                found = True
-                members.remove(nickname)
-        assert found, f'{nickname} not found in any channels'
+    def userQuit(self, nickname: str) -> None:
+        for chan in self._channelsWithUser(nickname):
+            chan.removeNick(nickname)
+
+    def _channelsWithUser(self, nickname: str) -> Sequence[ChannelState]:
+        return [chan for chan in self._channels.values() if nickname in chan]
+
+
+_MAX_MESSAGES = 50
+
+
+@attr.s
+class ChannelState:
+    # TODO: Need to eventually have some concept of "events" to cover
+    #       joins, parts, quits, kicks, bans (set and unset), and
+    #       nick changes.
+    name: str = attr.ib()
+    _messages: Deque[Message] = attr.ib(
+        init=False,
+        repr=False,
+        factory=lambda: collections.deque([], _MAX_MESSAGES),
+    )
+    _members: MutableSet[str] = attr.ib(init=False, repr=False, factory=set)
+
+    def __contains__(self, nickname: str) -> None:
+        return nickname in self._members
+
+    def addNick(self, nickname: str) -> None:
+        self._members.add(nickname)
+
+    def removeNick(self, nickname: str) -> None:
+        with contextlib.suppress(KeyError):
+            self._members.remove(nickname)
+
+    def addMessage(self, nickname: str, message: str) -> None:
+        self.addNick(nickname)
+        msg = Message.now(sender=nickname, text=message)
+        self._messages.append(msg)
+
+    def getMessages(
+        self,
+        sender: Optional[str] = None,
+        when: Optional[Union[int, datetime.datetime]] = None,
+    ) -> Sequence[Message]:
+        """
+        Get messages still in the queue, optionally filtered by
+        sender or age.
+
+        Note: only a limited number of messages are stored.
+
+        If ``sender`` is provided, only messages from that nickname
+        will be returned.
+
+        If ``when`` is provided, only younger messages will be
+        returned. ``when`` can be either:
+        -   a naive :class:`datetime.datetime` instance in UTC, the
+            earliest time, or
+        -   an integer, the maximum age in seconds relative to when
+            this method is called.
+        """
+        if isinstance(when, int):
+            when = _now() - datetime.timedelta(seconds=when)
+
+        def ismatch(msg: Message) -> bool:
+            return (
+                (sender is None or (msg.sender == sender))
+                and (when is None or (msg.when >= when))
+            )
+
+        return [msg for msg in self._messages if ismatch(msg)]
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.utcnow()
+
+
+@attr.s
+class Message:
+    sender: str = attr.ib()
+    text: str = attr.ib()
+    when: datetime.datetime = attr.ib()
+
+    @classmethod
+    def now(cls, *, sender: str, text: str) -> Message:
+        return cls(sender=sender, text=text, when=_now())
 
 
 class _ActionsWrangler:
@@ -174,7 +280,12 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
         self.signOnComplete = defer.Deferred()
         self.disconnected = defer.Deferred()
 
+    def connectionMade(self) -> None:
+        self._log.info('Connection established')
+        super().connectionMade()
+
     def signedOn(self) -> None:
+        self._log.info('Sign-on complete')
         self.signOnComplete.callback(None)
 
     def connectionLost(self, reason):
@@ -182,6 +293,20 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
             super().connectionLost(reason)
         finally:
             self.disconnected.callback(None)
+
+    def privmsg(self, user: str, channel: str, message: str) -> None:
+        sender = user.split('!', 1)[0]
+        if channel == self.nickname:
+            self._log.info(
+                'privmsg from {sender}: {message!r}',
+                sender=sender, message=message,
+            )
+        else:
+            self._log.info(
+                'message in {channel} from {sender}: {message!r}',
+                channel=channel, sender=sender, message=message,
+            )
+            self.state.channels.get(channel).addMessage(sender, message)
 
     def joined(self, channel: str) -> None:
         self._log.info('I joined channel {channel}', channel=channel)
@@ -199,13 +324,42 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
         )
         self.state.channels.remove(channel)
 
-    #def userJoined(self, user: str, channel: str) -> None:
-    #def userLeft(self, user: str, channel: str) -> None:
-    #def userQuit(self, user: str, message: str) -> None:
-    #def userKicked(
-    #    self, kickee: str, channel: str, kicker: str, message: str
-    #) -> None:
-    #def userRenamed(self, oldname: str, newname: str) -> None:
+    def userJoined(self, user: str, channel: str) -> None:
+        self._log.info(
+            'User {user} joined {channel}',
+            user=user, channel=channel,
+        )
+        self.state.channels.get(channel).addNick(user)
+
+    def userLeft(self, user: str, channel: str) -> None:
+        self._log.info(
+            'User {user} left {channel}',
+            user=user, channel=channel,
+        )
+        self.state.channels.get(channel).removeNick(user)
+
+    def userQuit(self, user: str, quitMessage: str) -> None:
+        self._log.info(
+            'User {user} quit: {message!r}',
+            user=user, message=quitMessage,
+        )
+        self.state.channels.userQuit(user)
+
+    def userKicked(
+        self, kickee: str, channel: str, kicker: str, message: str
+    ) -> None:
+        self._log.info(
+            'User {kickee} was kicked from {channel} by {kicker}: {message!r}',
+            kickee=kickee, channel=channel, kicker=kicker, message=message,
+        )
+        self.state.channels.get(channel).removeNick(kickee)
+
+    def userRenamed(self, oldname: str, newname: str) -> None:
+        self._log.info(
+            'User {oldname} is now known as {newname}',
+            oldname=oldname, newname=newname,
+        )
+        self.state.channels.userRenamed(oldname, newname)
 
     ### Low-level protocol events
     def irc_unknown(self, prefix, command, params):

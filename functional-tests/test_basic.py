@@ -1,10 +1,13 @@
 import pytest_twisted as pytest_tw
-from twisted.internet import task
+
+import utils
+from config import ALL_CHANS, INFOTEST
 
 
 @pytest_tw.inlineCallbacks
 def test_infobob_basic(monitor, start_infobob):
-    from twisted.internet import reactor
-
     yield start_infobob()
-    yield task.deferLater(reactor, 10, lambda: None)
+    yield utils.sleep(3)
+    for channelName in ALL_CHANS:
+        chan = monitor.getChannelState(channelName)
+        assert INFOTEST.nickname in chan
