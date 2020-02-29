@@ -38,9 +38,14 @@ def fixture_start_infobob(tmp_path):
     spawned = None
     fixlog = logger.Logger(namespace=f'{__name__}.fixture_start_infobob')
 
-    def start_infobob(channelsconf, autojoin) -> defer.Deferred:
+    def start_infobob(channelsconf=None, autojoin=None) -> defer.Deferred:
         nonlocal called
         nonlocal spawned
+
+        if channelsconf is None:
+            channelsconf = {cname: {'have_ops': True} for cname in ALL_CHANS}
+        if autojoin is None:
+            autojoin = ALL_CHANS
         if called:
             raise RuntimeError('already called')
         called = True
@@ -94,12 +99,48 @@ def fixture_ircd_endpoint():
     return ircd_endpoint
 
 
-@pytest_tw.async_yield_fixture(name='monitor')
-async def fixture_monitor(ircd_endpoint):
-    monitor = await clients.joinFakeUser(
-        ircd_endpoint,
-        MONITOR.nickname,
-        MONITOR.password,
-        autojoin=ALL_CHANS)
-    yield monitor
-    await monitor.disconnect()
+# XXX: This is broken in pytest_twisted, see
+# https://github.com/pytest-dev/pytest-twisted/pull/90
+# @pytest_tw.async_yield_fixture(name='joinfake')
+# async def fixture_joinfake(ircd_endpoint):
+#     controllers = []
+#     async def joinfake(creds, autojoin=ALL_CHANS):
+#         controller = await clients.joinFakeUser(
+#             ircd_endpoint,
+#             creds.nickname,
+#             creds.password,
+#             autojoin=autojoin,
+#         )
+#         controllers.append(controller)
+#         return controller
+#
+#     yield joinfake
+#     await defer.gatherResults([
+#         controller.disconnect() for controller in controllers
+#     ])
+@pytest.fixture(name='joinfake')
+def fixture_joinfake(ircd_endpoint):
+    controllers = []
+
+    @defer.inlineCallbacks
+    def joinfake(creds, autojoin=ALL_CHANS):
+        controller = yield defer.ensureDeferred(clients.joinFakeUser(
+            ircd_endpoint,
+            creds.nickname,
+            creds.password,
+            autojoin=autojoin,
+        ))
+        controllers.append(controller)
+        return controller
+
+    yield joinfake
+    if controllers:
+        pytest_tw.blockon(defer.gatherResults([
+            controller.disconnect() for controller in controllers
+        ]))
+
+
+@pytest_tw.async_fixture(name='monitor')
+async def fixture_monitor(joinfake):
+    monitor = await joinfake(MONITOR, autojoin=ALL_CHANS)
+    return monitor
