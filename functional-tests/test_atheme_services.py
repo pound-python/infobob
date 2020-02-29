@@ -80,5 +80,5 @@ def checkChannelRegistered(proxy, channel, nickname, password):
     return dfd
 
 
-class AthemeChannelRegistrationLookupFailed:
+class AthemeChannelRegistrationLookupFailed(Exception):
     pass

@@ -91,7 +91,8 @@ def run(reactor, *, bot, taskRunners):
 
 
 def runChatter(endpoint, reactor, nickname, password, channel, phrases):
-    dfd = clients.joinFakeUser(endpoint, nickname, password, [channel])
+    dfd = defer.ensureDeferred(
+        clients.joinFakeUser(endpoint, nickname, password, [channel]))
     dfd.addCallback(chat, reactor, channel, phrases)
     return dfd
 

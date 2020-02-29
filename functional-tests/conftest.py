@@ -56,13 +56,14 @@ def fixture_start_infobob(tmp_path):
         from twisted.internet import reactor
 
         running = defer.Deferred()
+        callLater = reactor.callLater  # pylint: disable=no-member
 
         def cbNotifyTest(value):
-            reactor.callLater(0, running.callback, None)
+            callLater(0, running.callback, None)
             return value
 
         def ebNotifyTest(failure):
-            reactor.callLater(0, running.errback, failure)
+            callLater(0, running.errback, failure)
             return failure
 
         spawned = bot.spawn(reactor).addCallbacks(cbNotifyTest, ebNotifyTest)

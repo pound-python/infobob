@@ -1,6 +1,6 @@
 from __future__ import annotations
 import enum
-from typing import MutableMapping, MutableSet, Callable, Sequence
+from typing import MutableMapping, MutableSet, Callable, Sequence, Awaitable
 
 from twisted.words.protocols import irc
 from twisted.internet.protocol import Factory
@@ -28,17 +28,16 @@ def _add_numerics() -> None:
 _add_numerics()
 
 
-@defer.inlineCallbacks
-def joinFakeUser(
+async def joinFakeUser(
     endpoint,
     nickname: str,
     password: str,
     autojoin: Sequence[str] = (),
-) -> ComposedIRCController:
-    controller = yield ComposedIRCController.connect(
+) -> Awaitable[ComposedIRCController]:
+    controller = await ComposedIRCController.connect(
         endpoint, nickname, password)
     if autojoin:
-        yield defer.gatherResults([
+        await defer.gatherResults([
             controller.joinChannel(chan) for chan in autojoin
         ])
     return controller
