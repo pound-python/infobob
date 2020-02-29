@@ -8,23 +8,6 @@ from twisted import logger
 import attr
 
 
-def _add_numerics() -> None:
-    numeric_addendum = dict(
-        RPL_WHOISACCOUNT='330',
-        RPL_QUIETLIST='728',
-        RPL_ENDOFQUIETLIST='729',
-        # 250 is "reserved": https://tools.ietf.org/html/rfc2812#section-5.3
-        RPL_STATSDLINE='250',
-        RPL_LOCALUSERS='265',  # aka RPL_CURRENT_LOCAL
-        RPL_GLOBALUSERS='266',  # aka RPL_CURRENT_GLOBAL
-    )
-    for name, numeric in numeric_addendum.items():
-        irc.numeric_to_symbolic[numeric] = name
-        irc.symbolic_to_numeric[name] = numeric
-
-_add_numerics()
-
-
 async def joinFakeUser(
     endpoint,
     nickname: str,
@@ -41,7 +24,35 @@ async def joinFakeUser(
 
 
 @attr.s
-class ChannelCollection:
+class ComposedIRCController:
+    # TODO: Change methods to coroutines? Deferred isn't generic (is that
+    #       even possible to have?), Awaitable[ComposedIRCController]
+    #       is a nicer type hint, and overall async/await is nicer.
+    _proto: _ComposedIRCClient = attr.ib()
+    _actions: _Actions = attr.ib()
+
+    @classmethod
+    @defer.inlineCallbacks
+    def connect(cls, endpoint, nickname: str, password: str) -> defer.Deferred:
+        proto = yield endpoints.connectProtocol(
+            endpoint, _ComposedIRCClient(nickname, password))
+        yield proto.signOnComplete
+        return cls(proto=proto, actions=proto.state.actions)
+
+    def disconnect(self) -> defer.Deferred:
+        self._proto.transport.loseConnection()
+        return self._proto.disconnected
+
+    def joinChannel(self, channelName: str) -> defer.Deferred:
+        self._proto.join(channelName)
+        return self._actions.myJoins.begin(channelName)
+
+    def say(self, channelName: str, message: str):
+        self._proto.say(channelName, message)
+
+
+@attr.s
+class _ChannelCollection:
     # channel name -> users
     _channels: MutableMapping[str, MutableSet[str]] = attr.ib(factory=dict)
 
@@ -112,37 +123,9 @@ class _Actions:
 
 
 @attr.s
-class ComposedIRCController:
-    # TODO: Change methods to coroutines? Deferred isn't generic (is that
-    #       even possible to have?), Awaitable[ComposedIRCController]
-    #       is a nicer type hint, and overall async/await is nicer.
-    _proto: _ComposedIRCClient = attr.ib()
-    _actions: _Actions = attr.ib()
-
-    @classmethod
-    @defer.inlineCallbacks
-    def connect(cls, endpoint, nickname: str, password: str) -> defer.Deferred:
-        proto = yield endpoints.connectProtocol(
-            endpoint, _ComposedIRCClient(nickname, password))
-        yield proto.signOnComplete
-        return cls(proto=proto, actions=proto.state.actions)
-
-    def disconnect(self) -> defer.Deferred:
-        self._proto.transport.loseConnection()
-        return self._proto.disconnected
-
-    def joinChannel(self, channelName: str) -> defer.Deferred:
-        self._proto.join(channelName)
-        return self._actions.myJoins.begin(channelName)
-
-    def say(self, channelName: str, message: str):
-        self._proto.say(channelName, message)
-
-
-@attr.s
 class _IRCClientState:
     actions: _Actions = attr.ib(factory=_Actions)
-    channels: ChannelCollection = attr.ib(factory=ChannelCollection)
+    channels: _ChannelCollection = attr.ib(factory=_ChannelCollection)
 
 
 class FailedToJoin(Exception):
@@ -274,3 +257,24 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     # XXX: These could just be fatal, maybe.
     # ERR_NEEDMOREPARAMS - to: numerous commands
     # ERR_NOSUCHSERVER - to: numerous commands
+
+
+def _add_numerics() -> None:
+    """
+    Update the IRC numerics registry in
+    :mod:`twisted.words.protocols.irc`.
+    """
+    numeric_addendum = dict(
+        RPL_WHOISACCOUNT='330',
+        RPL_QUIETLIST='728',
+        RPL_ENDOFQUIETLIST='729',
+        # 250 is "reserved": https://tools.ietf.org/html/rfc2812#section-5.3
+        RPL_STATSDLINE='250',
+        RPL_LOCALUSERS='265',  # aka RPL_CURRENT_LOCAL
+        RPL_GLOBALUSERS='266',  # aka RPL_CURRENT_GLOBAL
+    )
+    for name, numeric in numeric_addendum.items():
+        irc.numeric_to_symbolic[numeric] = name
+        irc.symbolic_to_numeric[name] = numeric
+
+_add_numerics()
