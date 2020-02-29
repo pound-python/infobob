@@ -1,13 +1,10 @@
 from __future__ import annotations
-import enum
 from typing import MutableMapping, MutableSet, Callable, Sequence, Awaitable
 
 from twisted.words.protocols import irc
-from twisted.internet.protocol import Factory
 from twisted.internet import endpoints
 from twisted.internet import defer
 from twisted import logger
-import zope.interface as zi
 import attr
 
 

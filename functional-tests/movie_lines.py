@@ -37,7 +37,6 @@ import sqlite3
 import zipfile
 import urllib.request
 import argparse
-from functools import partial
 from operator import itemgetter
 from itertools import groupby
 

@@ -34,7 +34,6 @@ def fixture_start_logging():
 
 @pytest.fixture(name='start_infobob')
 def fixture_start_infobob(tmp_path):
-    infobob_twistd = str(INFOBOB_PYTHON.parent.joinpath('twistd'))
     called = False
     spawned = None
     fixlog = logger.Logger(namespace=f'{__name__}.fixture_start_infobob')

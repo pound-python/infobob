@@ -1,32 +1,22 @@
 #!/usr/bin/env python3
-import os
-import json
 import pathlib
 import tempfile
-import time
 import sys
 import random
-import argparse
 from functools import partial
 from typing import Sequence
 
 from twisted.internet import defer
 from twisted.internet import task
 from twisted.internet import endpoints
-from twisted.internet.error import ProcessDone
 from twisted import logger
-import attr
 
 from config import (
-    SCHEMA_PATH,
     INFOBOB_PYTHON,
-    WEBUI_PORT,
-    INFOTEST,
     MONITOR,
     GENERICS,
     IRCD_HOST,
     IRCD_PORT,
-    SERVICES_XMLRPC_URL,
     buildConfig,
 )
 import clients
