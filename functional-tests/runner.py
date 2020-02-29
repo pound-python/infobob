@@ -85,10 +85,10 @@ class InfobobProcessProtocol(protocol.ProcessProtocol):
     def errReceived(self, data: bytes):
         self.log.info("stderr: " + data.decode('utf-8').rstrip('\r\n'))
 
-    def processEnded(self, status):
-        if status.check(ProcessDone) is None:
-            self.log.warn('Infobob exited: {status}', status=status)
-            self.ended.errback(status)
+    def processEnded(self, reason):
+        if reason.check(ProcessDone) is None:
+            self.log.warn('Infobob exited: {reason}', reason=reason)
+            self.ended.errback(reason)
         else:
             self.log.info('Infobob exited cleanly')
             self.ended.callback(None)

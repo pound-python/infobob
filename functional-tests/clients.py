@@ -158,16 +158,16 @@ def _joinErrorMethod(
     assert errorName.upper() == errorName and errorName.startswith('ERR_')
     methodName = f'irc_{errorName}'
 
-    def method(self, prefix: str, params: Sequence[str]) -> None:
+    def method(self, prefix: str, params: Sequence[str]) -> None:  # pylint: disable=unused-argument
         channel, *rest = params
-        self._log.warn(
+        self._log.warn(  # pylint: disable=protected-access
             'Failed to join {channel!r}: {code} {params}',
             channel=channel, code=errorName, params=rest,
         )
         err = FailedToJoin(errorName, channel, rest)
         self.state.actions.myJoins.error(channel, err)
 
-    method.__name__ == methodName
+    method.__name__ = methodName
     # TODO: Uh, what about __qualname__?
     return method
 
@@ -179,7 +179,7 @@ def _prefixNicknameThenForward(event):
     logger.globalLogPublisher(tweaked)
 
 
-class _ComposedIRCClient(irc.IRCClient):
+class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     """
     Goal: provide separations of concerns by dispatching events to
     other objects, instead of stuffing even more in the already-bloated

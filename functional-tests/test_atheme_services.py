@@ -23,9 +23,10 @@ def fixture_proxy():
 
 def test_registrations(proxy):
     dfd = defer.succeed(None)
+    def cbLoginRPC(_, proxy, creds):
+        return rpcLogin(proxy, creds.nickname, creds.password)
     for creds in ALL_USERS:
-        dfd.addCallback(lambda _: rpcLogin(
-            proxy, creds.nickname, creds.password))
+        dfd.addCallback(cbLoginRPC, proxy, creds)
     return dfd
 
 
@@ -51,11 +52,13 @@ class AthemeLoginFailed(Exception):
 
 
 def test_registered_channels(proxy):
+    def cbCheckChannelRegistered(_, proxy, chan, creds):
+        return checkChannelRegistered(
+            proxy, chan, creds.nickname, creds.password)
     channels = ALL_CHANS
     dfd = defer.succeed(None)
     for chan in channels:
-        dfd.addCallback(lambda _: checkChannelRegistered(
-            proxy, chan, CHANOP.nickname, CHANOP.password))
+        dfd.addCallback(cbCheckChannelRegistered, proxy, chan, CHANOP)
     return dfd
 
 

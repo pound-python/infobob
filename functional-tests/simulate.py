@@ -36,14 +36,28 @@ import runner
 LOG = logger.Logger()
 
 
-def main(reactor, infobob_working_dir: pathlib.Path, phrases: Sequence[str]):
-    stderrObserver = logger.textFileLogObserver(sys.stderr)
-    levelPredicate = logger.LogLevelFilterPredicate(
-        defaultLogLevel=logger.LogLevel.info)
-    filterer = logger.FilteringLogObserver(stderrObserver, [levelPredicate])
-    observers = [filterer]
-    logger.globalLogBeginner.beginLoggingTo(
-        observers, redirectStandardIO=False)
+def main():
+    args = sys.argv[1:]
+    if args:
+        with open(args[0]) as fp:
+            phrases = [line.strip() for line in fp]
+    else:
+        phrases = [
+            "You're using coconuts!",
+            "Where did you get the coconuts?",
+            "Found them?  In Mercea.  The coconut's tropical!",
+            "This new learning amazes me, Sir Bedevere.",
+            "Explain again how sheep's bladders may be employed "
+                "to prevent earthquakes.",
+            "Oh, let me go and have a bit of peril?",
+        ]
+    with tempfile.TemporaryDirectory() as tdir:
+        infobob_working_dir = pathlib.Path(tdir)
+        task.react(setupAndRun, (infobob_working_dir, phrases))
+
+
+def setupAndRun(reactor, infobob_working_dir: pathlib.Path, phrases: Sequence[str]):
+    startLogging()
     conf = buildConfig(
         channelsconf={
             '#project': {'have_ops': True},
@@ -72,6 +86,16 @@ def main(reactor, infobob_working_dir: pathlib.Path, phrases: Sequence[str]):
     return run(reactor, bot=bot, taskRunners=taskRunners)
 
 
+def startLogging():
+    stderrObserver = logger.textFileLogObserver(sys.stderr)
+    levelPredicate = logger.LogLevelFilterPredicate(
+        defaultLogLevel=logger.LogLevel.info)
+    filterer = logger.FilteringLogObserver(stderrObserver, [levelPredicate])
+    observers = [filterer]
+    logger.globalLogBeginner.beginLoggingTo(
+        observers, redirectStandardIO=False)
+
+
 @defer.inlineCallbacks
 def run(reactor, *, bot, taskRunners):
     LOG.info('Starting infobob')
@@ -82,7 +106,7 @@ def run(reactor, *, bot, taskRunners):
             LOG.error('infobob quit')
             return
         yield defer.gatherResults([run() for run in taskRunners])
-    except Exception:
+    except Exception:  # pylint: disable=broad-except
         LOG.failure('Unhandled exception in simulate.run')
     finally:
         if botproto.transport.pid is not None:
@@ -112,20 +136,4 @@ def chat(controller: clients.ComposedIRCController, reactor, channel, phrases):
 
 
 if __name__ == '__main__':
-    args = sys.argv[1:]
-    if args:
-        with open(args[0]) as fp:
-            phrases = [line.strip() for line in fp]
-    else:
-        phrases = [
-            "You're using coconuts!",
-            "Where did you get the coconuts?",
-            "Found them?  In Mercea.  The coconut's tropical!",
-            "This new learning amazes me, Sir Bedevere.",
-            "Explain again how sheep's bladders may be employed "
-                "to prevent earthquakes.",
-            "Oh, let me go and have a bit of peril?",
-        ]
-    with tempfile.TemporaryDirectory() as tdir:
-        infobob_working_dir = pathlib.Path(tdir)
-        task.react(main, (infobob_working_dir, phrases))
+    main()
