@@ -95,6 +95,12 @@ class ChannelController:
     def getMembers(self) -> Set[str]:
         return self._state.getMembers()
 
+    def getCurrentBans(self) -> Sequence[Ban]:
+        return self._state.getCurrentBans()
+
+    def getUnsetBans(self) -> Sequence[Ban]:
+        return self._state.getUnsetBans()
+
     def getMessages(
         self,
         sender: Optional[str] = None,
@@ -173,6 +179,11 @@ class _ChannelState:
         factory=lambda: collections.deque([], _MAX_MESSAGES),
     )
     _members: MutableSet[str] = attr.ib(init=False, repr=False, factory=set)
+    # mask -> Ban
+    _bans: MutableMapping[str, Ban] = attr.ib(
+        init=False, repr=False, factory=dict)
+    _unsetbans: MutableMapping[str, Ban] = attr.ib(
+        init=False, repr=False, factory=dict)
 
     def __contains__(self, nickname: str) -> None:
         return nickname in self._members
@@ -186,6 +197,21 @@ class _ChannelState:
     def removeNick(self, nickname: str) -> None:
         with contextlib.suppress(KeyError):
             self._members.remove(nickname)
+
+    def addBan(self, mask: str, setter: str) -> None:
+        ban = Ban(mask=mask, setBy=setter)
+        self._bans[ban.mask] = ban
+
+    def removeBan(self, mask: str, unsetter: str) -> None:
+        ban = self._bans.pop(mask)
+        ban = attr.evolve(ban, unsetBy=unsetter)
+        self._unsetbans[ban.mask] = ban
+
+    def getCurrentBans(self) -> Sequence[Ban]:
+        return list(self._bans.values())
+
+    def getUnsetBans(self) -> Sequence[Ban]:
+        return list(self._unsetbans.values())
 
     def addMessage(self, nickname: str, message: str) -> None:
         self.addNick(nickname)
@@ -209,6 +235,13 @@ class Message:
     @classmethod
     def now(cls, *, sender: str, text: str) -> Message:
         return cls(sender=sender, text=text, when=_now())
+
+
+@attr.s
+class Ban:
+    mask: str = attr.ib()
+    setBy: str = attr.ib()
+    unsetBy: Optional[str] = attr.ib(default=None)
 
 
 class _ActionsWrangler:
@@ -337,6 +370,31 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     def left(self, channel: str) -> None:
         self._log.info('I left {channel}', channel=channel)
         self.state.channels.remove(channel)
+
+    def modeChanged(
+        self,
+        user: str,
+        channel: str,
+        set: bool,
+        modes: Sequence[str],
+        args: Sequence[str],
+    ) -> None:
+        if channel == self.nickname:
+            # Server-level user mode change, ignore for now.
+            return
+        for mode, arg in zip(modes, args):
+            if arg == self.nickname:
+                # Channel user mode change, ignore for now.
+                continue
+
+            chan = self.state.channels.get(channel)
+            if mode == 'b':
+                setterMask = user
+                banMask = arg
+                if set:
+                    chan.addBan(mask=banMask, setter=setterMask)
+                else:
+                    chan.removeBan(mask=banMask, unsetter=setterMask)
 
     def kickedFrom(self, channel: str, kicker: str, message: str) -> None:
         self._log.info(
