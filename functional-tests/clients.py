@@ -107,6 +107,14 @@ class ChannelController:
         dfd = self._state.opAttempts.begin(self.name)
         return dfd.addTimeout(timeout, reactor)
 
+    def retrieveBans(self, timeout: int = 1) -> defer.Deferred:
+        from twisted.internet import reactor
+        self._proto.mode(self.name, True, 'b')
+        dfd = self._state.banlistReceives.begin(self.name)
+        def cbGetBans(_):
+            return self._state.getCurrentBans()
+        return dfd.addTimeout(timeout, reactor).addCallback(cbGetBans)
+
     def setBan(self, mask: str) -> None:
         if not self._isOpped:
             raise NotAnOperator
@@ -210,6 +218,7 @@ class _ChannelState:
     #       nick changes.
     name: str = attr.ib()
     opAttempts: _ActionsWrangler = attr.ib(init=False)
+    banlistReceives: _ActionsWrangler = attr.ib(init=False)
     operators: Set[str] = attr.ib(init=False, factory=set)
     _messages: Deque[Message] = attr.ib(
         init=False,
@@ -225,6 +234,7 @@ class _ChannelState:
 
     def __attrs_post_init__(self):
         self.opAttempts = _ActionsWrangler(f'opAttempt {self.name}')
+        self.banlistReceives = _ActionsWrangler(f'banlistReceive {self.name}')
 
     def __contains__(self, nickname: str) -> None:
         return nickname in self._members
@@ -244,7 +254,9 @@ class _ChannelState:
         self._bans[ban.mask] = ban
 
     def removeBan(self, mask: str, unsetter: str) -> None:
-        ban = self._bans.pop(mask)
+        ban = self._bans.pop(mask, None)
+        if ban is None:
+            return
         ban = attr.evolve(ban, unsetBy=unsetter)
         self._unsetbans[ban.mask] = ban
 
@@ -544,6 +556,18 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     # from `irc_unknown`.
     def irc_RPL_NAMREPLY(self, prefix, params): pass
     def irc_RPL_ENDOFNAMES(self, prefix, params): pass
+
+    ###
+    def irc_RPL_BANLIST(self, prefix, params):
+        _, channelName, banMask, setterMask, when = params
+        chan = self.state.channels.get(channelName)
+        chan.addBan(mask=banMask, setter=setterMask)
+
+    def irc_RPL_ENDOFBANLIST(self, prefix, params):
+        channelName = params[1]
+        chan = self.state.channels.get(channelName)
+        with contextlib.suppress(_NoActionInFlight):
+            chan.banlistReceives.complete(channelName)
 
     ### Ignore generic info replies
     def irc_RPL_LUSERUNKNOWN(self, prefix, params): pass
