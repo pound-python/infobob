@@ -1,9 +1,13 @@
 import sys
 
+import attr
+import hyperlink
 import pytest
 import pytest_twisted as pytest_tw
+import treq
 from twisted.internet import endpoints
 from twisted.internet import defer
+from twisted.web.http_headers import Headers
 from twisted import logger
 
 from config import (
@@ -12,7 +16,9 @@ from config import (
     IRCD_HOST,
     IRCD_PORT,
     MONITOR,
+    CHANOP,
     ALL_CHANS,
+    WEBUI_PORT,
 )
 import clients
 from runner import InfobobRunner
@@ -63,7 +69,8 @@ def fixture_start_infobob(tmp_path):
         callLater = reactor.callLater  # pylint: disable=no-member
 
         def cbNotifyTest(value):
-            callLater(0, running.callback, None)
+            uiclient = InfobobWebUIClient.new('localhost', WEBUI_PORT)
+            callLater(0, running.callback, uiclient)
             return value
 
         def ebNotifyTest(failure):
@@ -88,6 +95,29 @@ def fixture_start_infobob(tmp_path):
         return pytest_tw.blockon(
             spawned.addCallback(cbStop).addErrback(ebLogAndRaise)
         )
+
+
+@attr.s
+class InfobobWebUIClient:
+    root: hyperlink.URL = attr.ib()
+    _client = attr.ib()
+
+    @classmethod
+    def new(cls, host: str, port: int):
+        root = hyperlink.URL(scheme='http', host=host, port=port)
+        return cls(root=root, client=treq)
+
+    def _get(self, *args, **kwargs):
+        headers = Headers()
+        headers.addRawHeader('Accept', 'application/json')
+        return self._client.get(*args, headers=headers, **kwargs)
+
+    async def getCurrentBans(self, channelName: str):
+        url = self.root.child('bans')
+        resp = await self._get(str(url))
+        assert resp.code == 200
+        byChannel = await resp.json()
+        return byChannel[channelName]
 
 
 @pytest.fixture(name='ircd_endpoint')
@@ -144,3 +174,11 @@ def fixture_joinfake(ircd_endpoint):
 async def fixture_monitor(joinfake):
     monitor = await joinfake(MONITOR, autojoin=ALL_CHANS)
     return monitor
+
+
+@pytest_tw.async_fixture(name='chanop')
+async def fixture_chanop(joinfake):
+    chanop = await joinfake(CHANOP, autojoin=ALL_CHANS)
+    for channelName in ALL_CHANS:
+        await chanop.channel(channelName).becomeOperator()
+    return chanop

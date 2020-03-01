@@ -64,6 +64,10 @@ class ComposedIRCController:
         yield proto.signOnComplete.addTimeout(signOnTimeout, reactor)
         return ctrl
 
+    @property
+    def nickname(self):
+        return self._proto.nickname
+
     def disconnect(self) -> defer.Deferred:
         self._proto.transport.loseConnection()
         return self._proto.disconnected
@@ -91,6 +95,34 @@ class ChannelController:
 
     def say(self, message: str):
         self._proto.say(self.name, message)
+
+    def msg(self, nickname: str, message: str):
+        self._proto.msg(nickname, message)
+
+    def becomeOperator(self, timeout: int = 1) -> defer.Deferred:
+        if self._isOpped:
+            return defer.succeed(None)
+        from twisted.internet import reactor
+        self.msg('ChanServ', f'op {self.name}')
+        dfd = self._state.opAttempts.begin(self.name)
+        return dfd.addTimeout(timeout, reactor)
+
+    def setBan(self, mask: str) -> None:
+        if not self._isOpped:
+            raise NotAnOperator
+        self._proto.mode(self.name, True, 'b', mask=mask)
+
+    def unsetBan(self, mask: str) -> None:
+        if not self._isOpped:
+            raise NotAnOperator
+        self._proto.mode(self.name, False, 'b', mask=mask)
+
+    @property
+    def _isOpped(self) -> bool:
+        return self._proto.nickname in self._state.operators
+
+    def getOperators(self) -> Set[str]:
+        return frozenset(self._state.operators)
 
     def getMembers(self) -> Set[str]:
         return self._state.getMembers()
@@ -134,6 +166,10 @@ class ChannelController:
         return [msg for msg in self._state.getMessages() if ismatch(msg)]
 
 
+class NotAnOperator(Exception):
+    pass
+
+
 @attr.s
 class _ChannelCollection:
     _channels: MutableMapping[str, _ChannelState] = attr.ib(factory=dict)
@@ -173,6 +209,8 @@ class _ChannelState:
     #       joins, parts, quits, kicks, bans (set and unset), and
     #       nick changes.
     name: str = attr.ib()
+    opAttempts: _ActionsWrangler = attr.ib(init=False)
+    operators: Set[str] = attr.ib(init=False, factory=set)
     _messages: Deque[Message] = attr.ib(
         init=False,
         repr=False,
@@ -184,6 +222,9 @@ class _ChannelState:
         init=False, repr=False, factory=dict)
     _unsetbans: MutableMapping[str, Ban] = attr.ib(
         init=False, repr=False, factory=dict)
+
+    def __attrs_post_init__(self):
+        self.opAttempts = _ActionsWrangler(f'opAttempt {self.name}')
 
     def __contains__(self, nickname: str) -> None:
         return nickname in self._members
@@ -252,20 +293,20 @@ class _ActionsWrangler:
     # Really key can be any hashable thing, not just a str
     def begin(self, key: str) -> defer.Deferred:
         if key in self._inflight:
-            raise ValueError(f'{self.name} for {key!r} already in flight')
+            raise _ActionAlreadyInFlight.build(self.name, key)
         dfd = self._inflight[key] = defer.Deferred()
         return dfd
 
     def complete(self, key: str) -> None:
         dfd = self._inflight.pop(key, None)
         if dfd is None:
-            raise ValueError(f'No {self.name} in flight for {key!r}')
+            raise _NoActionInFlight.build(self.name, key)
         dfd.callback(key)
 
     def error(self, key: str, err: Exception) -> None:
         dfd = self._inflight.pop(key, None)
         if dfd is None:
-            raise ValueError(f'No {self.name} in flight for {key!r}')
+            raise _NoActionInFlight.build(self.name, key)
         dfd.errback(err)
 
     def __repr__(self):
@@ -273,6 +314,18 @@ class _ActionsWrangler:
             f'<{type(self).__name__}(name={self.name}),'
             f' {len(self._inflight)} outstanding>'
         )
+
+
+class _ActionAlreadyInFlight(Exception):
+    @classmethod
+    def build(cls, name, key):
+        return cls(f'{name} for {key!r} already in flight')
+
+
+class _NoActionInFlight(Exception):
+    @classmethod
+    def build(cls, name, key):
+        return cls(f'No {name} in flight for {key!r}')
 
 
 @attr.s
@@ -379,15 +432,33 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
         modes: Sequence[str],
         args: Sequence[str],
     ) -> None:
+        modePfx = '-+'[set]
         if channel == self.nickname:
             # Server-level user mode change, ignore for now.
+            self._log.info(
+                'Mode change [{pfx}{modes}] for user {target}',
+                pfx=modePfx, modes=modes, target=self.nickname,
+            )
             return
+        chan = self.state.channels.get(channel)
         for mode, arg in zip(modes, args):
+            self._log.info(
+                'Mode change for {target}: [{pfx}{mode}{maybearg}] by {user}',
+                target=channel, pfx=modePfx, mode=mode, user=user,
+                maybearg='' if arg is None else f' {arg}',
+            )
+            if mode == 'o':
+                if set:
+                    chan.operators.add(arg)
+                else:
+                    with contextlib.suppress(KeyError):
+                        chan.operators.remove(arg)
+                if arg == self.nickname:
+                    with contextlib.suppress(_NoActionInFlight):
+                        chan.opAttempts.complete(channel)
             if arg == self.nickname:
-                # Channel user mode change, ignore for now.
+                # Channel user mode change affecting me.
                 continue
-
-            chan = self.state.channels.get(channel)
             if mode == 'b':
                 setterMask = user
                 banMask = arg
@@ -451,6 +522,10 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     def lineReceived(self, line):
         self._log.debug('lineReceived({line!r})', line=line)
         super().lineReceived(line)
+
+    def sendLine(self, line):
+        self._log.debug('sendLine({line!r})', line=line)
+        super().sendLine(line)
 
     ### JOIN replies:
     # The server itself replies with a JOIN, this is handled by twisted:
