@@ -68,8 +68,10 @@ class ComposedIRCController:
         self._proto.transport.loseConnection()
         return self._proto.disconnected
 
-    def getChannelState(self, channelName: str) -> ChannelState:
-        return self._proto.state.channels.get(channelName)
+    def channel(self, channelName: str) -> ChannelController:
+        chanstate = self._proto.state.channels.get(channelName)
+        return ChannelController(
+            name=channelName, proto=self._proto, state=chanstate)
 
     def joinChannel(self, channelName: str, timeout: int= 1) -> defer.Deferred:
         from twisted.internet import reactor
@@ -82,65 +84,16 @@ class ComposedIRCController:
 
 
 @attr.s
-class _ChannelCollection:
-    _channels: MutableMapping[str, ChannelState] = attr.ib(factory=dict)
-
-    _log = logger.Logger()
-
-    def add(self, channelName: str) -> None:
-        assert channelName not in self._channels, \
-            f'channel {channelName} already exists'
-        self._channels[channelName] = ChannelState(name=channelName)
-
-    def remove(self, channelName: str) -> None:
-        del self._channels[channelName]
-
-    def get(self, channelName: str) -> ChannelState:
-        return self._channels[channelName]
-
-    def userRenamed(self, oldnick: str, newnick: str) -> None:
-        for chan in self._channelsWithUser(oldnick):
-            chan.removeNick(oldnick)
-            chan.addNick(newnick)
-
-    def userQuit(self, nickname: str) -> None:
-        for chan in self._channelsWithUser(nickname):
-            chan.removeNick(nickname)
-
-    def _channelsWithUser(self, nickname: str) -> Sequence[ChannelState]:
-        return [chan for chan in self._channels.values() if nickname in chan]
-
-
-_MAX_MESSAGES = 50
-
-
-@attr.s
-class ChannelState:
-    # TODO: Need to eventually have some concept of "events" to cover
-    #       joins, parts, quits, kicks, bans (set and unset), and
-    #       nick changes.
+class ChannelController:
     name: str = attr.ib()
-    _messages: Deque[Message] = attr.ib(
-        init=False,
-        repr=False,
-        factory=lambda: collections.deque([], _MAX_MESSAGES),
-    )
-    _members: MutableSet[str] = attr.ib(init=False, repr=False, factory=set)
+    _proto: _ComposedIRCClient = attr.ib()
+    _state: _ChannelState = attr.ib()
 
-    def __contains__(self, nickname: str) -> None:
-        return nickname in self._members
+    def say(self, message: str):
+        self._proto.say(self.name, message)
 
-    def addNick(self, nickname: str) -> None:
-        self._members.add(nickname)
-
-    def removeNick(self, nickname: str) -> None:
-        with contextlib.suppress(KeyError):
-            self._members.remove(nickname)
-
-    def addMessage(self, nickname: str, message: str) -> None:
-        self.addNick(nickname)
-        msg = Message.now(sender=nickname, text=message)
-        self._messages.append(msg)
+    def getMembers(self) -> Set[str]:
+        return self._state.getMembers()
 
     def getMessages(
         self,
@@ -172,7 +125,75 @@ class ChannelState:
                 and (when is None or (msg.when >= when))
             )
 
-        return [msg for msg in self._messages if ismatch(msg)]
+        return [msg for msg in self._state.getMessages() if ismatch(msg)]
+
+
+@attr.s
+class _ChannelCollection:
+    _channels: MutableMapping[str, _ChannelState] = attr.ib(factory=dict)
+
+    _log = logger.Logger()
+
+    def add(self, channelName: str) -> None:
+        assert channelName not in self._channels, \
+            f'channel {channelName} already exists'
+        self._channels[channelName] = _ChannelState(name=channelName)
+
+    def remove(self, channelName: str) -> None:
+        del self._channels[channelName]
+
+    def get(self, channelName: str) -> _ChannelState:
+        return self._channels[channelName]
+
+    def userRenamed(self, oldnick: str, newnick: str) -> None:
+        for chan in self._channelsWithUser(oldnick):
+            chan.removeNick(oldnick)
+            chan.addNick(newnick)
+
+    def userQuit(self, nickname: str) -> None:
+        for chan in self._channelsWithUser(nickname):
+            chan.removeNick(nickname)
+
+    def _channelsWithUser(self, nickname: str) -> Sequence[_ChannelState]:
+        return [chan for chan in self._channels.values() if nickname in chan]
+
+
+_MAX_MESSAGES = 50
+
+
+@attr.s
+class _ChannelState:
+    # TODO: Need to eventually have some concept of "events" to cover
+    #       joins, parts, quits, kicks, bans (set and unset), and
+    #       nick changes.
+    name: str = attr.ib()
+    _messages: Deque[Message] = attr.ib(
+        init=False,
+        repr=False,
+        factory=lambda: collections.deque([], _MAX_MESSAGES),
+    )
+    _members: MutableSet[str] = attr.ib(init=False, repr=False, factory=set)
+
+    def __contains__(self, nickname: str) -> None:
+        return nickname in self._members
+
+    def getMembers(self) -> Set[str]:
+        return frozenset(self._members)
+
+    def addNick(self, nickname: str) -> None:
+        self._members.add(nickname)
+
+    def removeNick(self, nickname: str) -> None:
+        with contextlib.suppress(KeyError):
+            self._members.remove(nickname)
+
+    def addMessage(self, nickname: str, message: str) -> None:
+        self.addNick(nickname)
+        msg = Message.now(sender=nickname, text=message)
+        self._messages.append(msg)
+
+    def getMessages(self) -> Sequence[Message]:
+        return list(self._messages)
 
 
 def _now() -> datetime.datetime:

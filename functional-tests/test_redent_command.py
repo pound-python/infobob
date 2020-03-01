@@ -26,11 +26,11 @@ async def test_redent(monitor, start_infobob, joinfake):
     LOG.info('target {nick} join complete', nick=target.nickname)
     code = 'try: dostuff();; except ItBroke as e: failAnnoyingly()'
     message = f'{INFOTEST.nickname}, redent {target.nickname} {code}'
-    senderCtrl.say(PROJECT_CHAN, message)
+    senderCtrl.channel(PROJECT_CHAN).say(message)
     LOG.info('sender said {message}', message=message)
     await utils.sleep(3)
     LOG.info('sleep complete')
-    chan = monitor.getChannelState(PROJECT_CHAN)
+    chan = monitor.channel(PROJECT_CHAN)
     botmessages = chan.getMessages(sender=INFOTEST.nickname)
     assert len(botmessages) == 1
     [msg] = botmessages
