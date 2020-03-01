@@ -86,6 +86,15 @@ class ComposedIRCController:
     def say(self, channelName: str, message: str):
         self._proto.say(channelName, message)
 
+    def getPrivateMessages(
+        self,
+        sender: Optional[str] = None,
+    ) -> Sequence[Message]:
+        messages = self._proto.state.getPrivateMessages()
+        if sender is None:
+            return messages
+        return [msg for msg in messages if sender == msg.sender]
+
 
 @attr.s
 class ChannelController:
@@ -165,13 +174,13 @@ class ChannelController:
         if isinstance(when, int):
             when = _now() - datetime.timedelta(seconds=when)
 
-        def ismatch(msg: Message) -> bool:
-            return (
-                (sender is None or (msg.sender == sender))
-                and (when is None or (msg.when >= when))
-            )
+        messages = self._state.getMessages()
+        if sender is not None:
+            messages = [msg for msg in messages if msg.sender == sender]
+        if when is not None:
+            messages = [msg for msg in messages if msg.when >= when]
 
-        return [msg for msg in self._state.getMessages() if ismatch(msg)]
+        return messages
 
 
 class NotAnOperator(Exception):
@@ -351,6 +360,18 @@ class _Actions:
 class _IRCClientState:
     actions: _Actions = attr.ib(factory=_Actions)
     channels: _ChannelCollection = attr.ib(factory=_ChannelCollection)
+    _privmsgs: Deque[Message] = attr.ib(
+        init=False,
+        repr=False,
+        factory=lambda: collections.deque([], _MAX_MESSAGES),
+    )
+
+    def addPrivateMessage(self, nickname: str, message: str) -> None:
+        msg = Message.now(sender=nickname, text=message)
+        self._privmsgs.append(msg)
+
+    def getPrivateMessages(self) -> Sequence[Message]:
+        return list(self._privmsgs)
 
 
 class FailedToJoin(Exception):
@@ -420,6 +441,7 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
                 'privmsg from {sender}: {message!r}',
                 sender=sender, message=message,
             )
+            self.state.addPrivateMessage(sender, message)
         else:
             self._log.info(
                 'message in {channel} from {sender}: {message!r}',

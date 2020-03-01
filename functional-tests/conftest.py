@@ -1,4 +1,5 @@
 import sys
+from typing import Sequence
 
 import attr
 import hyperlink
@@ -113,7 +114,15 @@ class InfobobWebUIClient:
         return self._client.get(*args, headers=headers, **kwargs)
 
     async def getCurrentBans(self, channelName: str):
-        url = self.root.child('bans')
+        chanBans = await self._bansFromChannel(('bans',), channelName)
+        return chanBans
+
+    async def getExpiredBans(self, channelName: str):
+        chanBans = await self._bansFromChannel(('bans', 'expired'), channelName)
+        return chanBans
+
+    async def _bansFromChannel(self, endpoint: Sequence[str], channelName: str):
+        url = self.root.child(*endpoint)
         resp = await self._get(str(url))
         assert resp.code == 200
         byChannel = await resp.json()
