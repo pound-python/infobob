@@ -13,8 +13,7 @@ Requirements:
 
 The `features/` directory has some [Gherkin](https://cucumber.io/docs/gherkin/)
 feature files. I don't intend to make these actually executable; they're
-primarily intended as documentation for what Infobob should do, and to assist
-in planning test cases.
+primarily intended to document test cases that haven't yet been implemented.
 
 
 Setup and Running
