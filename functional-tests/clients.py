@@ -2,14 +2,19 @@ from __future__ import annotations
 import datetime
 import collections
 import contextlib
+import enum
 from typing import (
     Awaitable,
     Callable,
     Deque,
+    Generic,
+    Hashable,
     MutableMapping,
+    Set,
     MutableSet,
     Optional,
     Sequence,
+    TypeVar,
     Union,
 )
 
@@ -45,7 +50,7 @@ class ComposedIRCController:
     #       even possible to have?), Awaitable[ComposedIRCController]
     #       is a nicer type hint, and overall async/await is nicer.
     _proto: _ComposedIRCClient = attr.ib()
-    _actions: _Actions = attr.ib()
+    _actions: _ActionsWrangler[_IRCClientAction, str] = attr.ib()
 
     @classmethod
     @defer.inlineCallbacks
@@ -80,7 +85,7 @@ class ComposedIRCController:
     def joinChannel(self, channelName: str, timeout: int= 1) -> defer.Deferred:
         from twisted.internet import reactor
         self._proto.join(channelName)
-        dfd = self._actions.myJoins.begin(channelName)
+        dfd = self._actions.begin(_IRCClientAction.joinChannel, channelName)
         return dfd.addTimeout(timeout, reactor)
 
     def say(self, channelName: str, message: str):
@@ -113,13 +118,13 @@ class ChannelController:
             return defer.succeed(None)
         from twisted.internet import reactor
         self.msg('ChanServ', f'op {self.name}')
-        dfd = self._state.opAttempts.begin(self.name)
+        dfd = self._state.actions.begin(_ChannelAction.becomeOperator, None)
         return dfd.addTimeout(timeout, reactor)
 
     def retrieveBans(self, timeout: int = 1) -> defer.Deferred:
         from twisted.internet import reactor
         self._proto.mode(self.name, True, 'b')
-        dfd = self._state.banlistReceives.begin(self.name)
+        dfd = self._state.actions.begin(_ChannelAction.receiveBanlist, None)
         def cbGetBans(_):
             return self._state.getCurrentBans()
         return dfd.addTimeout(timeout, reactor).addCallback(cbGetBans)
@@ -220,14 +225,21 @@ class _ChannelCollection:
 _MAX_MESSAGES = 50
 
 
+class _ChannelAction(enum.Enum):
+    becomeOperator = attr.ib()
+    receiveBanlist = attr.ib()
+
+    def __repr__(self) -> str:
+        return f'<{self.name}>'
+
+
 @attr.s
 class _ChannelState:
     # TODO: Need to eventually have some concept of "events" to cover
     #       joins, parts, quits, kicks, bans (set and unset), and
     #       nick changes.
     name: str = attr.ib()
-    opAttempts: _ActionsWrangler = attr.ib(init=False)
-    banlistReceives: _ActionsWrangler = attr.ib(init=False)
+    actions: _ActionsWrangler[_ChannelAction, None] = attr.ib(init=False)
     operators: Set[str] = attr.ib(init=False, factory=set)
     _messages: Deque[Message] = attr.ib(
         init=False,
@@ -242,8 +254,7 @@ class _ChannelState:
         init=False, repr=False, factory=dict)
 
     def __attrs_post_init__(self):
-        self.opAttempts = _ActionsWrangler(f'opAttempt {self.name}')
-        self.banlistReceives = _ActionsWrangler(f'banlistReceive {self.name}')
+        self.actions = _ActionsWrangler(f'channel {self.name}')
 
     def __contains__(self, nickname: str) -> None:
         return nickname in self._members
@@ -306,25 +317,30 @@ class Ban:
     unsetBy: Optional[str] = attr.ib(default=None)
 
 
-class _ActionsWrangler:
+_A = TypeVar('_A', bound=enum.Enum)
+_C = TypeVar('_C', bound=Hashable)
+
+class _ActionsWrangler(Generic[_A, _C]):
     def __init__(self, name: str):
         self.name = name
         self._inflight = {}
 
-    # Really key can be any hashable thing, not just a str
-    def begin(self, key: str) -> defer.Deferred:
+    def begin(self, actionType: _A, context: _C) -> defer.Deferred:
+        key = (actionType, context)
         if key in self._inflight:
             raise _ActionAlreadyInFlight.build(self.name, key)
         dfd = self._inflight[key] = defer.Deferred()
         return dfd
 
-    def complete(self, key: str) -> None:
+    def complete(self, actionType: _A, context: _C) -> None:
+        key = (actionType, context)
         dfd = self._inflight.pop(key, None)
         if dfd is None:
             raise _NoActionInFlight.build(self.name, key)
         dfd.callback(key)
 
-    def error(self, key: str, err: Exception) -> None:
+    def error(self, actionType: _A, context: _C, err: Exception) -> None:
+        key = (actionType, context)
         dfd = self._inflight.pop(key, None)
         if dfd is None:
             raise _NoActionInFlight.build(self.name, key)
@@ -349,16 +365,17 @@ class _NoActionInFlight(Exception):
         return cls(f'No {name} in flight for {key!r}')
 
 
-@attr.s
-class _Actions:
-    myJoins = attr.ib(factory=lambda: _ActionsWrangler('myJoins'))
-    # XXX: Semantics yet unclear.
-    #userJoins = attr.ib(factory=lambda: _ActionsWrangler('userJoins'))
+class _IRCClientAction(enum.Enum):
+    joinChannel = enum.auto()
+
+    def __repr__(self) -> str:
+        return f'<{self.name}>'
 
 
 @attr.s
 class _IRCClientState:
-    actions: _Actions = attr.ib(factory=_Actions)
+    actions: _ActionsWrangler[_IRCClientAction, str] = attr.ib(
+        factory=lambda: _ActionsWrangler('_IRCClientAction'))
     channels: _ChannelCollection = attr.ib(factory=_ChannelCollection)
     _privmsgs: Deque[Message] = attr.ib(
         init=False,
@@ -391,7 +408,7 @@ def _joinErrorMethod(
             channel=channel, code=errorName, params=rest,
         )
         err = FailedToJoin(errorName, channel, rest)
-        self.state.actions.myJoins.error(channel, err)
+        self.state.actions.error(_IRCClientAction.joinChannel, channel, err)
 
     method.__name__ = methodName
     # TODO: Uh, what about __qualname__?
@@ -452,7 +469,7 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
     def joined(self, channel: str) -> None:
         self._log.info('I joined channel {channel}', channel=channel)
         self.state.channels.add(channel)
-        self.state.actions.myJoins.complete(channel)
+        self.state.actions.complete(_IRCClientAction.joinChannel, channel)
 
     def left(self, channel: str) -> None:
         self._log.info('I left {channel}', channel=channel)
@@ -489,7 +506,8 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
                         chan.operators.remove(arg)
                 if arg == self.nickname:
                     with contextlib.suppress(_NoActionInFlight):
-                        chan.opAttempts.complete(channel)
+                        chan.actions.complete(
+                            _ChannelAction.becomeOperator, None)
             if arg == self.nickname:
                 # Channel user mode change affecting me.
                 continue
@@ -589,7 +607,7 @@ class _ComposedIRCClient(irc.IRCClient):  # pylint: disable=abstract-method
         channelName = params[1]
         chan = self.state.channels.get(channelName)
         with contextlib.suppress(_NoActionInFlight):
-            chan.banlistReceives.complete(channelName)
+            chan.actions.complete(_ChannelAction.receiveBanlist, None)
 
     ### Ignore generic info replies
     def irc_RPL_LUSERUNKNOWN(self, prefix, params): pass
