@@ -1,14 +1,9 @@
 import sys
-from typing import Sequence
 
-import attr
-import hyperlink
 import pytest
 import pytest_twisted as pytest_tw
-import treq
 from twisted.internet import endpoints
 from twisted.internet import defer
-from twisted.web.http_headers import Headers
 from twisted import logger
 
 from config import (
@@ -19,7 +14,6 @@ from config import (
     MONITOR,
     CHANOP,
     ALL_CHANS,
-    WEBUI_PORT,
 )
 import clients
 from runner import InfobobRunner
@@ -42,12 +36,11 @@ def fixture_start_logging():
 @pytest.fixture(name='start_infobob')
 def fixture_start_infobob(tmp_path):
     called = False
-    spawned = None
-    fixlog = logger.Logger(namespace=f'{__name__}.fixture_start_infobob')
+    controller = None
 
     def start_infobob(channelsconf=None, autojoin=None) -> defer.Deferred:
         nonlocal called
-        nonlocal spawned
+        nonlocal controller
 
         if channelsconf is None:
             channelsconf = {cname: {'have_ops': True} for cname in ALL_CHANS}
@@ -57,76 +50,20 @@ def fixture_start_infobob(tmp_path):
             raise RuntimeError('already called')
         called = True
         conf = buildConfig(channelsconf, autojoin)
-        bot = InfobobRunner(
+        controller = InfobobRunner(
             python=INFOBOB_PYTHON,
             server=IRCD_HOST,
             server_port=IRCD_PORT,
             working_dir=tmp_path,
             conf=conf,
         )
-        from twisted.internet import reactor
 
-        running = defer.Deferred()
-        callLater = reactor.callLater  # pylint: disable=no-member
-
-        def cbNotifyTest(value):
-            uiclient = InfobobWebUIClient.new('localhost', WEBUI_PORT)
-            callLater(0, running.callback, uiclient)
-            return value
-
-        def ebNotifyTest(failure):
-            callLater(0, running.errback, failure)
-            return failure
-
-        spawned = bot.spawn(reactor).addCallbacks(cbNotifyTest, ebNotifyTest)
-        return running
+        return controller.spawn()
 
     yield start_infobob
 
-    if spawned is not None:
-        def cbStop(botproto):
-            if botproto.transport.pid is not None:
-                botproto.transport.signalProcess('INT')
-            return botproto.ended
-
-        def ebLogAndRaise(f):
-            fixlog.failure('Ugh, i dunno', f)
-            return f
-
-        return pytest_tw.blockon(
-            spawned.addCallback(cbStop).addErrback(ebLogAndRaise)
-        )
-
-
-@attr.s
-class InfobobWebUIClient:
-    root: hyperlink.URL = attr.ib()
-    _client = attr.ib()
-
-    @classmethod
-    def new(cls, host: str, port: int):
-        root = hyperlink.URL(scheme='http', host=host, port=port)
-        return cls(root=root, client=treq)
-
-    def _get(self, *args, **kwargs):
-        headers = Headers()
-        headers.addRawHeader('Accept', 'application/json')
-        return self._client.get(*args, headers=headers, **kwargs)
-
-    async def getCurrentBans(self, channelName: str):
-        chanBans = await self._bansFromChannel(('bans',), channelName)
-        return chanBans
-
-    async def getExpiredBans(self, channelName: str):
-        chanBans = await self._bansFromChannel(('bans', 'expired'), channelName)
-        return chanBans
-
-    async def _bansFromChannel(self, endpoint: Sequence[str], channelName: str):
-        url = self.root.child(*endpoint)
-        resp = await self._get(str(url))
-        assert resp.code == 200
-        byChannel = await resp.json()
-        return byChannel[channelName]
+    if controller is not None:
+        return pytest_tw.blockon(controller.stop())
 
 
 @pytest.fixture(name='ircd_endpoint')

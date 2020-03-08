@@ -1,13 +1,12 @@
 import re
 import contextlib
 
-import pytest
 import pytest_twisted as pytest_tw
 from twisted import logger
 
 import clients
 import utils
-from config import PROJECT_CHAN, GENERICS, INFOTEST, WEBUI_PORT
+from config import PROJECT_CHAN, INFOTEST
 
 
 LOG = logger.Logger()
@@ -27,7 +26,7 @@ async def clean_channel(channel: clients.ChannelController):
 
 
 @pytest_tw.ensureDeferred
-async def test_ban_discovery(monitor, start_infobob, chanop):
+async def test_ban_discovery(start_infobob, chanop):
     """
     Infobob discovers bans that it did not see happen, by populating
     its database when it joins a channel.
@@ -38,10 +37,10 @@ async def test_ban_discovery(monitor, start_infobob, chanop):
         mask = 'naughty!user@client.example.org'
         chanop.channel(PROJECT_CHAN).setBan(mask)
         # When the bot joins the channel,
-        webui = await start_infobob()
+        botctrl = await start_infobob()
         await utils.sleep(2)
         # Then the ban shows as active in the webui,
-        recorded = await webui.getCurrentBans(PROJECT_CHAN)
+        recorded = await botctrl.webui().getCurrentBans(PROJECT_CHAN)
         thatBan = next((ban for ban in recorded if ban['mask'] == mask), None)
         assert thatBan is not None, f'{mask} not found in {recorded!r}'
         # And the reason says the ban was pulled from the channel,
@@ -51,7 +50,7 @@ async def test_ban_discovery(monitor, start_infobob, chanop):
 
 
 @pytest_tw.ensureDeferred
-async def test_record_ban_unset(monitor, start_infobob, chanop):
+async def test_record_ban_unset(start_infobob, chanop):
     """
     Infobob notices when an operator unsets a ban.
 
@@ -64,7 +63,7 @@ async def test_record_ban_unset(monitor, start_infobob, chanop):
         # And a ban is set on the channel,
         mask = 'naughty!user@client.example.org'
         project.setBan(mask)
-        webui = await start_infobob()
+        botctrl = await start_infobob()
         await utils.sleep(2)
         # When the chanop unsets the ban,
         project.unsetBan(mask)
@@ -85,7 +84,7 @@ async def test_record_ban_unset(monitor, start_infobob, chanop):
         assert re.fullmatch(pattern, pm.text)
 
         # And the ban will show as expired in the webui.
-        recorded = await webui.getExpiredBans(PROJECT_CHAN)
+        recorded = await botctrl.webui().getExpiredBans(PROJECT_CHAN)
         thatBan = next((ban for ban in recorded if ban['mask'] == mask), None)
         assert (
             thatBan['setBy']
