@@ -1,7 +1,9 @@
+import contextlib
+import json
 import os
 import pathlib
 import sqlite3
-import json
+import urllib.parse
 from typing import Sequence, Tuple, Optional
 
 import attr
@@ -14,6 +16,10 @@ from twisted.web.http_headers import Headers
 from twisted import logger
 
 from config import SCHEMA_PATH
+
+
+
+JAN_15_1970 = '1970-01-15T12:00:00.000000Z'
 
 
 def _getReactor():
@@ -74,6 +80,12 @@ class InfobobRunner:
             self._procproto.transport.signalProcess('INT')
         dfd = self._procproto.ended
 
+        def cbNullifyProcProto(passthrough):
+            self._procproto = None
+            return passthrough
+
+        dfd.addBoth(cbNullifyProcProto)
+
         def ebLogAndRaise(f):
             self._log.failure('Error in process', f)
             return f
@@ -118,18 +130,26 @@ class InfobobDBClient:
 
     def init(self) -> None:
         if not self.dbpath.exists():
-            with self._connect() as conn:
-                conn.executescript(SCHEMA_PATH.read_text())
-            conn.close()
+            conn = self._connect()
+            with contextlib.closing(conn):
+                with conn:
+                    conn.executescript(SCHEMA_PATH.read_text())
 
     def _connect(self):
         conn = sqlite3.connect(str(self.dbpath))
         return conn
 
     def getBanAuths(self):
-        with self._connect() as conn:
-            rows = conn.execute('SELECT bad, code FROM ban_authorizations')
-            return [(banid, banauth) for (banid, banauth) in rows]
+        conn = self._connect()
+        with contextlib.closing(conn):
+            rows = conn.execute('SELECT ban, code FROM ban_authorizations')
+            return [(str(banid), banauth) for (banid, banauth) in rows]
+
+    def dumpBanRows(self):
+        conn = self._connect()
+        with contextlib.closing(conn):
+            for row in conn.execute('SELECT * FROM bans'):
+                print(row)
 
 
 @attr.s
@@ -142,10 +162,18 @@ class InfobobWebUIClient:
         root = hyperlink.URL(scheme='http', host=host, port=port)
         return cls(root=root, client=treq)
 
-    def _get(self, *args, **kwargs):
+    def _get(self, url):
         headers = Headers()
         headers.addRawHeader('Accept', 'application/json')
-        return self._client.get(*args, headers=headers, **kwargs)
+        return self._client.get(str(url), headers=headers)
+
+    def _post(self, url, data):
+        headers = Headers()
+        headers.addRawHeader('Accept', 'application/json')
+        headers.addRawHeader(
+            'Content-Type', 'application/x-www-form-urlencoded')
+        payload = urllib.parse.urlencode(data).encode('ascii')
+        return self._client.post(str(url), headers=headers, data=payload)
 
     async def getCurrentBans(self, channelName: str):
         chanBans = await self._bansFromChannel(('bans',), channelName)
@@ -155,12 +183,23 @@ class InfobobWebUIClient:
         chanBans = await self._bansFromChannel(('bans', 'expired'), channelName)
         return chanBans
 
+    async def getAllBans(self, channelName: str):
+        chanBans = await self._bansFromChannel(('bans', 'all'), channelName)
+        return chanBans
+
     async def _bansFromChannel(self, endpoint: Sequence[str], channelName: str):
         url = self.root.child(*endpoint)
-        resp = await self._get(str(url))
+        resp = await self._get(url)
         assert resp.code == 200
         byChannel = await resp.json()
-        return byChannel[channelName]
+        return byChannel.get(channelName, [])
+
+    async def setBanExpired(self, banId: str, authToken: str):
+        url = self.root.child('bans', 'edit', banId, authToken)
+        resp = await self._post(url, data=dict(expire_at=JAN_15_1970))
+        assert resp.code == 200
+        body = await resp.json()
+        return body
 
 
 class InfobobProcessProtocol(protocol.ProcessProtocol):

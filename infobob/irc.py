@@ -532,12 +532,15 @@ class Infobob(irc.IRCClient):
 
     @defer.inlineCallbacks
     def _expireBans(self):
+        self.log.info('Checking for expired bans')
         expired = yield self.dbpool.get_expired_bans()
         for channel, it in itertools.groupby(expired, operator.itemgetter(0)):
             if not self._conf.channel(channel).have_ops:
                 continue
             yield self.ensureOps(channel)
             for _, mask, mode in it:
+                self.log.info('Unsetting expired +{mode} {mask} on {channel}',
+                    mode=mode, mask=mask, channel=channel)
                 self.mode(channel, False, mode, mask=mask)
 
     @defer.inlineCallbacks
