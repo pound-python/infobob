@@ -81,12 +81,12 @@ class InfobobRunner:
         dfd.addErrback(ebLogAndRaise)
         return dfd
 
-    def webui(self):
+    def webui(self) -> 'InfobobWebUIClient':
         port = self.conf['web']['port']
         uiclient = InfobobWebUIClient.new('localhost', port)
         return uiclient
 
-    def _ensure_db(self):
+    def database(self) -> 'InfobobDBClient':
         db = self.conf.get('database', {}).get('sqlite', {}).get('db_file')
         if db is None:
             dbpath = self.working_dir.joinpath('infobob.db')
@@ -95,11 +95,10 @@ class InfobobRunner:
                 .setdefault('sqlite', {})['db_file'] = str(dbpath)
         else:
             dbpath = pathlib.Path(db)
-        if not dbpath.exists():
-            conn = sqlite3.connect(str(dbpath))
-            with conn:
-                conn.executescript(SCHEMA_PATH.read_text())
-            conn.close()
+        return InfobobDBClient(dbpath)
+
+    def _ensure_db(self):
+        self.database().init()
 
     def _write_conf(self) -> pathlib.Path:
         confpath = self.working_dir.joinpath('infobob.conf.json')
@@ -111,6 +110,26 @@ class InfobobRunner:
         twistd = str(self.python.parent.joinpath('twistd'))
         args = [twistd, '-n', 'infobob', str(confpath)]
         return twistd, args
+
+
+@attr.s
+class InfobobDBClient:
+    dbpath: os.PathLike = attr.ib()
+
+    def init(self) -> None:
+        if not self.dbpath.exists():
+            with self._connect() as conn:
+                conn.executescript(SCHEMA_PATH.read_text())
+            conn.close()
+
+    def _connect(self):
+        conn = sqlite3.connect(str(self.dbpath))
+        return conn
+
+    def getBanAuths(self):
+        with self._connect() as conn:
+            rows = conn.execute('SELECT bad, code FROM ban_authorizations')
+            return [(banid, banauth) for (banid, banauth) in rows]
 
 
 @attr.s
