@@ -68,7 +68,7 @@ def pasteIdFromFirstComponent(pattern):
     """
 
     def locatePasteId(path):
-        firstComponent, _, _ = path.lstrip(u'/').partition(u'/')
+        firstComponent, _, _ = path.strip(u'/').partition(u'/')
         pasteId = _matchPasteId(pattern, firstComponent)
         if pasteId is not None:
             return pasteId
@@ -91,7 +91,7 @@ def pasteIdFromFirstOrRaw(pattern):
     """
 
     def locatePasteId(path):
-        components = path.lstrip(u'/').split(u'/', 3)[:2]
+        components = path.strip(u'/').split(u'/', 3)[:2]
         pasteId = None
         if len(components) == 2 and components[0] == 'raw':
             pasteId = _matchPasteId(pattern, components[1])

@@ -39,6 +39,10 @@ class ExtractBadPasteSpecsTestCase(TrialSyncTestCase):
             (b'pastebin.com/pwZA', u'pastebin.com', u'pwZA'),
             (b'pastebin.ca/123986', u'pastebin.ca', u'123986'),
             (b'hastebin.com/asdflkkfig', u'hastebin.com', u'asdflkkfig'),
+            # Also works with trailing slashes
+            (b'pastebin.com/pwZA/', u'pastebin.com', u'pwZA'),
+            (b'pastebin.ca/123986/', u'pastebin.ca', u'123986'),
+            (b'hastebin.com/asdflkkfig/', u'hastebin.com', u'asdflkkfig'),
         ]
     ])
     def test_scheme_optional(self, message, domain, pasteid):
