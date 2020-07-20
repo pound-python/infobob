@@ -43,6 +43,12 @@ class ExtractBadPasteSpecsTestCase(TrialSyncTestCase):
             (b'pastebin.com/pwZA/', u'pastebin.com', u'pwZA'),
             (b'pastebin.ca/123986/', u'pastebin.ca', u'123986'),
             (b'hastebin.com/asdflkkfig/', u'hastebin.com', u'asdflkkfig'),
+            # Hastebin has insignificant extensions
+            (b'hastebin.com/asdflkkfig.py', u'hastebin.com', u'asdflkkfig'),
+            (b'hastebin.com/asdflkkfig.txt', u'hastebin.com', u'asdflkkfig'),
+            (b'hastebin.com/asdflkkfig.scala', u'hastebin.com', u'asdflkkfig'),
+            # But 0x0.st cares
+            (b'0x0.st/asdf.py', u'0x0.st', u'asdf.py'),
         ]
     ])
     def test_scheme_optional(self, message, domain, pasteid):
@@ -334,12 +340,14 @@ class GenericBadPastebinTestCase(TrialTestCase):
 class CustomResource(object):
     isLeaf = True  # NB: means getChildWithDefault will not be called
 
-    def __init__(self, status, content):
+    def __init__(self, status, content, contentType=u'text/plain'):
         self.status = status
         self.content = content
+        self.contentType = contentType
 
     def render(self, request):
         request.setResponseCode(self.status)
+        request.setHeader("Content-Type", self.contentType)
         return self.content
 
 
@@ -358,3 +366,34 @@ class RetrieveUrlContentTestCase(TrialSyncTestCase):
         d = self.doRetrieve(400, b'epic fail')
         f = self.failureResultOf(d)
         self.assertRegex(str(f), r'Expected 200 response .* but got 400')
+
+
+class MimeIgnoringPastebinTestCase(TrialTestCase):
+    def getPastebin(self, mimetype):
+        return pastebin.MimeIgnoringPastebin(
+            u'paste.example.com',
+            u'',
+            pastebin.pasteIdFromFirstOrRaw(u'([a-zA-Z0-9_-]{4,12})$'),
+            u'',
+            self.doRetrieve,
+            [mimetype],
+            'http'
+        )
+
+    def doRetrieve(self, url):
+        self.treqStub = treq.testing.StubTreq(CustomResource(200, 'hello', 'text/plain'))
+        return pastebin.retrieveUrlLazy(url, client=self.treqStub)
+
+    @defer.inlineCallbacks
+    def test_skips_mimetype(self):
+        badPaste = pastebin.BadPaste(u'paste.example.com', u'1234')
+        bin = self.getPastebin('text/plain')
+        result = yield bin.contentFromPaste(badPaste)
+        self.assertIsNone(result)
+
+    @defer.inlineCallbacks
+    def test_accepts_different_mimetype(self):
+        badPaste = pastebin.BadPaste(u'paste.example.com', u'1234')
+        bin = self.getPastebin('text/html')
+        result = yield bin.contentFromPaste(badPaste)
+        self.assertIsNotNone(result)

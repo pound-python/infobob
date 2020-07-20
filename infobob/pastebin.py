@@ -49,9 +49,18 @@ def make_repaster(paster):
         GenericBadPastebin(
             u'hastebin.com',
             [u'www.hastebin.com'],
-            pasteIdFromFirstOrRaw(u'([a-zA-Z0-9]{4,12})$'),
+            pasteIdFromFirstOrRaw(u'([a-zA-Z0-9]{4,12})(?:\\.[a-z]+)?$'),
             u'/raw/',
             retrieveUrlContent,
+        ),
+        MimeIgnoringPastebin(
+            u'0x0.st',
+            [u'www.0x0.st'],
+            pasteIdFromFirstOrRaw(u'([a-zA-Z0-9_-]{4,12}\\.py)$'),
+            u'',
+            retrieveUrlLazy,
+            [u'text/plain'],
+            'http'
         ),
     ]
     return BadPasteRepaster(badPastebins, paster)
@@ -153,7 +162,7 @@ class BadPasteRepaster(object):
         bad paste found.
         """
         potentialUrls = re.findall(
-            b'(?:https?://)?[a-z0-9.-:]+/[a-z0-9/]+',
+            b'(?:https?://)?[a-z0-9.-:]+/[a-z0-9/]+(?:\\.[a-z]+)?',
             message,
             flags=re.IGNORECASE,
         )
@@ -214,7 +223,10 @@ class BadPasteRepaster(object):
             for paste in badPastes
         ]
         pastes_datas = yield defer.gatherResults(defs)
-        if len(pastes_datas) == 1:
+        pastes_datas = [data for data in pastes_datas if data]
+        if not pastes_datas:
+            return
+        elif len(pastes_datas) == 1:
             data = pastes_datas[0]
             language = u'python'
         else:
@@ -418,12 +430,13 @@ class GenericBadPastebin(object):
         pasteIdFromPath,
         rawUrlPathPrefix,
         rawContentRetriever,
+        rawUrlProtocol=u'https',
     ):
         self.name = mainDomain
         self.domains = (mainDomain,) + tuple(altDomains)
         self._pasteIdFromPath = pasteIdFromPath
         self._baseRawUrl = urlparse.urlunparse((
-            u'https',
+            rawUrlProtocol,
             mainDomain,
             u'/' + rawUrlPathPrefix.strip(u'/') + u'/',
             u'',
@@ -457,6 +470,57 @@ class GenericBadPastebin(object):
         )
 
 
+class MimeIgnoringPastebin(GenericBadPastebin):
+    """
+    A pastebin that produces paste URLs with an ID in the URL's path,
+    and offers a "raw" URL for downloading the raw content of a paste
+    given the ID. Additionally, it can ignore pastes that have one of
+    the specified MIME types.
+
+    ``pasteIdFromPath`` is a function used to extract the paste ID
+    from a paste URL's path (a text string).
+    """
+    def __init__(
+        self,
+        mainDomain,
+        altDomains,
+        pasteIdFromPath,
+        rawUrlPathPrefix,
+        rawRequestRetriever,
+        mimetypesToIgnore,
+        rawUrlProtocol=u'https',
+    ):
+        super(MimeIgnoringPastebin, self).__init__(
+            mainDomain,
+            altDomains,
+            pasteIdFromPath,
+            rawUrlPathPrefix,
+            rawRequestRetriever,
+            rawUrlProtocol,
+        )
+        self.mimetypesToIgnore = mimetypesToIgnore
+
+    def contentFromPaste(self, badPaste):
+        def mimeCheckCallback(response):
+            cts = response.headers.getRawHeaders("Content-Type")
+            if not cts:
+                return treq.content(response)
+            for ct in cts:
+                if ct.split(';', 1)[0] in self.mimetypesToIgnore:
+                    return None
+            return treq.content(response)
+
+        if badPaste.pastebinName != self.name:
+            msgfmt = (
+                u'Cannot retrieve paste {paste!r}, not created by {self!r}'
+            )
+            raise ValueError(msgfmt.format(paste=badPaste, self=self))
+        url = self._baseRawUrl + badPaste.id
+        req = self._retrieve(url)
+        mimeDfd = req.addCallback(mimeCheckCallback)
+        return mimeDfd
+
+
 class FailedToRetrieve(Exception):
     pass
 
@@ -486,6 +550,32 @@ def retrieveUrlContent(url, client=treq):
 
     respOkDfd = respDfd.addCallback(cbCheckResponseCode)
     return respOkDfd.addCallback(client.content)
+
+
+def retrieveUrlLazy(url, client=treq):
+    """
+    Make a GET request to ``url``, verify 200 status response, and
+    return a Deferred that fires with the response.
+
+    Will errback with :exc:`FailedToRetrieve` if a non-200 response
+    was received.
+    """
+    if isinstance(url, unicode):
+        url = url.encode('utf-8')
+    log.info(u'Attempting to retrieve {url!r}'.format(url=url))
+    respDfd = client.get(url, unbuffered=True)
+
+    def cbCheckResponseCode(response):
+        #print('response!', response)
+        if response.code != 200:
+            raise FailedToRetrieve(
+                'Expected 200 response from {url!r} but got {code}'.format(
+                    url=url, code=response.code
+                )
+            )
+        return response
+
+    return respDfd.addCallback(cbCheckResponseCode)
 
 
 ### Support for outgoing pastes
