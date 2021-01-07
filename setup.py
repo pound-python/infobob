@@ -3,7 +3,7 @@ from setuptools import setup
 install_requires = [
     # Pin deps for now, to be upgraded after tests are much expanded.
     'Genshi==0.7',
-    'lxml==3.6.0',
+    'lxml==4.6.2',
     'Pygments==1.4',
     'python-dateutil==2.5.3',
     'Twisted[tls]==16.4.0',
