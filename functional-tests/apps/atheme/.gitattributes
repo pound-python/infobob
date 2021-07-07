@@ -1,0 +1,6 @@
+# Don't allow git to mess with the DB.
+# diffs could still be interesting, so leave that set,
+# but don't let it play with line endings, or try to
+# merge two versions of it.
+# Also ignore whitespace errors.
+initial.db diff -text -merge -whitespace

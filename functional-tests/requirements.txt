@@ -1,0 +1,4 @@
+twisted[tls]
+pytest
+pytest-twisted
+treq

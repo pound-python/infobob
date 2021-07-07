@@ -1,2 +1,9 @@
 /infobob.cfg
 *.sqlite
+*.py[co]
+.tox
+.coverage
+dist/
+build/
+_trial_temp
+twisted/plugins/dropin.cache

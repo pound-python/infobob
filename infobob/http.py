@@ -1,7 +1,10 @@
 import os.path
+import datetime
 import itertools
 import operator
+import json
 
+import dateutil.tz
 from twisted.internet.defer import inlineCallbacks
 from twisted.web import server
 from twisted import logger
@@ -12,6 +15,7 @@ from infobob.database import NoSuchBan
 from infobob.util import parse_time_string
 
 
+UTC = dateutil.tz.tzutc()
 DEFAULT_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 
 
@@ -22,6 +26,64 @@ def renderTemplate(request, tmpl, **kwargs):
                   .render('html', doctype='html5', encoding='utf-8'))
     request.finish()
 
+
+def _banAsJSONable(bantuple, show_unset, is_expired=None):
+    # XXX Badness:
+    #       If set to None, `is_expired` will be computed from the ban expiry
+    #       and current time, otherwise will use the provided boolean value.
+    #       This just papers over the lack of real model objects in
+    #       anticipation of a sweeping refactor, and the JSON stuff in general
+    #       is really just a hack to make functional tests easier to write.
+    (
+        _, mask, mode, set_at, set_by, expire_at, reason, unset_at, unset_by
+    ) = bantuple
+    if is_expired is None:
+        is_expired = (
+            expire_at < datetime.datetime.now(tz=UTC)
+            if expire_at
+            else False
+        )
+    jsonable = dict(
+        mask=mask,
+        mode=mode,
+        setBy=set_by.partition('!')[0],
+        setAt=set_at.isoformat(),
+        reason=reason,
+        expiry=dict(
+            when=expire_at.isoformat() if expire_at else None,
+            expired=is_expired,
+        ),
+    )
+    if show_unset:
+        jsonable['unset'] = dict(
+            unsetBy=unset_by.partition('!')[0] if unset_by else None,
+            unsetAt=unset_at.isoformat() if unset_by else None,
+        )
+    return jsonable
+
+
+def renderJSONBans(request, bans, show_unset, show_recent_expiration):
+    byChannel = {}
+    for channel, channelBans in bans:
+        renderedBans = []
+        for ban in channelBans:
+            jsonable = _banAsJSONable(
+                ban,
+                show_unset=show_unset,
+                is_expired=show_recent_expiration,
+            )
+            renderedBans.append(jsonable)
+        byChannel[channel] = renderedBans
+
+    _renderJSON(request, byChannel)
+
+
+def _renderJSON(request, payload):
+    request.setHeader('Content-type', 'application/json; charset=utf-8')
+    request.write(json.dumps(payload, ensure_ascii=True))
+    request.finish()
+
+
 class InfobobWebUI(object):
     app = klein.Klein()
 
@@ -29,13 +91,34 @@ class InfobobWebUI(object):
         self.loader = loader
         self.dbpool = dbpool
 
+    def renderBans(self, request, bans, show_unset, show_recent_expiration):
+        variables = dict(
+            bans=bans,
+            show_unset=show_unset,
+            show_recent_expiration=show_recent_expiration,
+        )
+        if request.getHeader('accept') == 'application/json':
+            renderJSONBans(request, **variables)
+        else:
+            renderTemplate(request, self.loader.load('bans.html'), **variables)
+
+    def renderEditBan(self, request, ban, message=None, jsonBadRequest=False):
+        if request.getHeader('accept') == 'application/json':
+            if jsonBadRequest:
+                request.setResponseCode(400)
+            jsonable = _banAsJSONable(ban, show_unset=True)
+            _renderJSON(request, dict(ban=jsonable, message=message))
+        else:
+            renderTemplate(request, self.loader.load('edit_ban.html'),
+                ban=ban, message=message)
+
     @app.route('/bans')
     @inlineCallbacks
     def bans(self, request):
         bans = yield self.dbpool.get_active_bans()
         bans = itertools.groupby(bans, operator.itemgetter(0))
-        renderTemplate(request, self.loader.load('bans.html'),
-            bans=bans, show_unset=False, show_recent_expiration=False)
+        self.renderBans(
+            request, bans=bans, show_unset=False, show_recent_expiration=False)
 
     @app.route('/bans/expired')
     @app.route('/bans/expired/<int:count>')
@@ -44,23 +127,22 @@ class InfobobWebUI(object):
         bans = yield self.dbpool.get_recently_expired_bans(count)
         bans.sort(key=operator.itemgetter(0, 7))
         bans = itertools.groupby(bans, operator.itemgetter(0))
-        renderTemplate(request, self.loader.load('bans.html'),
-            bans=bans, show_unset=True, show_recent_expiration=True)
+        self.renderBans(
+            request, bans=bans, show_unset=True, show_recent_expiration=True)
 
     @app.route('/bans/all')
     @inlineCallbacks
     def allBans(self, request):
         bans = yield self.dbpool.get_all_bans()
         bans = itertools.groupby(bans, operator.itemgetter(0))
-        renderTemplate(request, self.loader.load('bans.html'),
-            bans=bans, show_unset=True, show_recent_expiration=False)
+        self.renderBans(
+            request, bans=bans, show_unset=True, show_recent_expiration=False)
 
     @app.route('/bans/edit/<rowid>/<auth>', methods=['GET', 'HEAD'])
     @inlineCallbacks
     def editBan(self, request, rowid, auth):
         ban = yield self.dbpool.get_ban_with_auth(rowid, auth)
-        renderTemplate(request, self.loader.load('edit_ban.html'),
-            ban=ban, message=None)
+        self.renderEditBan(request, ban=ban, message=None)
 
     @app.route('/bans/edit/<rowid>/<auth>', methods=['POST'])
     @inlineCallbacks
@@ -81,15 +163,15 @@ class InfobobWebUI(object):
                     message = (
                         'Invalid expiration timestamp or relative date {0!r}'
                     ).format(raw_expire_at)
-                    renderTemplate(request, self.loader.load('edit_ban.html'),
-                        ban=ban, message=message)
+                    self.renderEditBan(
+                        request, ban=ban, message=message, jsonBadRequest=True)
                     return
         if 'reason' in request.args:
             reason = request.args['reason'][0]
         yield self.dbpool.update_ban_by_rowid(rowid, expire_at, reason)
         ban = ban[:5] + (expire_at, reason) + ban[7:]
-        renderTemplate(request, self.loader.load('edit_ban.html'),
-            ban=ban, message='ban details updated')
+        self.renderEditBan(request, ban=ban, message='ban details updated')
+
 
 def makeSite(templates_dir, dbpool):
     loader = TemplateLoader(templates_dir, auto_reload=True)
